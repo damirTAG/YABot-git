@@ -53,10 +53,14 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
             os.remove(title)
             print("%s has been removed successfuly" % title)
     except:
+        keyboard = InlineKeyboardMarkup()
+        keyboard.add(
+            InlineKeyboardButton(text='❌ Close | Закрыть',
+                                 callback_data='close'),
+        )
         await bot.delete_message(call.message.chat.id, call.message.message_id)
         error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nContact: @damirtag'
-        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id)
-        print(error)
+        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
 
 # audio download
 
@@ -97,11 +101,14 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
             os.remove(delete)
             print("%s has been removed successfuly" % title)
     except:
+        keyboard = InlineKeyboardMarkup()
+        keyboard.add(
+            InlineKeyboardButton(text='❌ Close | Закрыть',
+                                 callback_data='close'),
+        )
         await bot.delete_message(call.message.chat.id, call.message.message_id)
         error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nContact: @damirtag'
-        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id)
-        print(error)
-
+        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
 
 # Установить
 @dp.message_handler(Text(equals='Установить/Download'))
