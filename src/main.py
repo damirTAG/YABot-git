@@ -24,7 +24,14 @@ async def hello(message: types.Message):
     await message.reply("🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\nJust send me a link to install!\n\n🇷🇺 Привет! Это бот который устанавливает видео и аудио с Ютуба, ТикТока и Риллсов,\nПросто скинь мне ссылку!")
 
 
+# CLOSE BUTTON
+@dp.callback_query_handler(text="close")
+async def close(call: types.CallbackQuery):
+    await bot.delete_message(call.message.chat.id, call.message.message_id)
+
 # video download
+
+
 @dp.callback_query_handler(text='download_mp4')
 async def inline_keyboard_mp4(call: types.CallbackQuery):
     try:
@@ -59,7 +66,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
                                  callback_data='close'),
         )
         await bot.delete_message(call.message.chat.id, call.message.message_id)
-        error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nContact: @damirtag'
+        error = f'<i>Произошла ошибка при загрузке.\nError while loading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
         print(error)
 
