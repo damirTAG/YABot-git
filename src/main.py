@@ -68,7 +68,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
         await bot.delete_message(call.message.chat.id, call.message.message_id)
         error = f'<i>Произошла ошибка при загрузке.\nError while loading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
-        print(error)
+
 
 # audio download
 
@@ -117,7 +117,6 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
         await bot.delete_message(call.message.chat.id, call.message.message_id)
         error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
-        print(error)
 
 
 # Установить
