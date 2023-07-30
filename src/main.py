@@ -20,8 +20,9 @@ async def hello(message: types.Message):
     start_button = ['Установить/Download']
     keyboards = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboards.add(*start_button)
+    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\nJust send me a link to install!\n\n🇷🇺 Привет! Это бот который устанавливает видео и аудио с Ютуба, ТикТока и Риллсов,\nПросто скинь мне ссылку!"
 
-    await message.reply("🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\nJust send me a link to install!\n\n🇷🇺 Привет! Это бот который устанавливает видео и аудио с Ютуба, ТикТока и Риллсов,\nПросто скинь мне ссылку!")
+    await message.reply(text=start, reply_markup=keyboards)
 
 
 # CLOSE BUTTON
@@ -122,7 +123,7 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
 # Установить
 @dp.message_handler(Text(equals='Установить/Download'))
 async def start_dw(message: types.Message):
-    await message.reply('Скинь ссылку!/Send me a link!')
+    await message.reply('Скинь ссылку!\n/Send me a link!')
 
 
 @dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com/reel/)')
@@ -136,8 +137,8 @@ async def downloading(message: types.Message):
     text = "В каком виде скачать?\nIn what type to download?"
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
-        InlineKeyboardButton(text='Видео/Video', callback_data='download_mp4'),
-        InlineKeyboardButton(text='Аудио/Audio', callback_data='download_mp3'),
+        InlineKeyboardButton(text='📹', callback_data='download_mp4'),
+        InlineKeyboardButton(text='🔊', callback_data='download_mp3'),
         # InlineKeyboardButton(text='Image (TikTok)',
         #                      callback_data='download_img'),
     )
