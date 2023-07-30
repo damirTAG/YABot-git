@@ -9,8 +9,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatAction
 from aiogram.dispatcher.filters import Text
 # =========
 storage = MemoryStorage()
-
-
 bot = Bot(TOKEN, parse_mode=types.ParseMode.HTML)
 dp = Dispatcher(bot, storage=storage)
 # =========
@@ -27,8 +25,6 @@ async def hello(message: types.Message):
 
 
 # video download
-
-
 @dp.callback_query_handler(text='download_mp4')
 async def inline_keyboard_mp4(call: types.CallbackQuery):
     try:
@@ -52,13 +48,14 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
             await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_VIDEO)
             await asyncio.sleep(3)
             loadtime = (end - start).total_seconds() * 1**1
-            caption = f"<a href='{link}'>Ссылка | Link</a>\n<i>Loading time: {loadtime:.01f} sec</i>"
+            caption = f"<a href='{link}'>Ссылка | Link</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
             await bot.send_video(chat_id=chat_id, video=video, caption=caption, reply_to_message_id=message_id)
             os.remove(title)
             print("%s has been removed successfuly" % title)
-    except ValueError:
-        error = '<pre language="python">Произошла ошибка при загрузке.\nError while downloading content</pre>'
-        await call.message.reply(text=error)
+    except:
+        await bot.delete_message(call.message.chat.id, call.message.message_id)
+        error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nValueError:<pre language="python">{ValueError}</pre>\n\nContact: @damirtag'
+        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id)
         print(error)
 
 # audio download
@@ -91,7 +88,7 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
             audio = open(f'{title}.mp3', 'rb')
             end = datetime.now()
             loadtime = (end - start).total_seconds() * 1**1
-            caption = f"<a href='{link}'>Ссылка | Link</a>\n<i>Loading time: {loadtime:.01f} sec</i>"
+            caption = f"<a href='{link}'>Ссылка | Link</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
             await bot.delete_message(call.message.chat.id, call.message.message_id)
             await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_AUDIO)
             await asyncio.sleep(3)
@@ -99,9 +96,11 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
             # deleting file after
             os.remove(delete)
             print("%s has been removed successfuly" % title)
-    except ValueError:
-        error = '<pre language="python">Произошла ошибка при загрузке.\nError while loading content</pre>'
-        await call.message.reply(text=error)
+    except:
+        await bot.delete_message(call.message.chat.id, call.message.message_id)
+        error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nValueError:<pre language="python">{ValueError}</pre>\n\nContact: @damirtag'
+        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id)
+        print(error)
 
 
 # Установить
