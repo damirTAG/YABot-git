@@ -1,6 +1,5 @@
 from ExampleConfig import TOKEN
 import os
-import traceback
 from datetime import datetime
 import yt_dlp as ytd
 from aiogram import Dispatcher, Bot, executor, types
@@ -55,7 +54,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
             print("%s has been removed successfuly" % title)
     except:
         await bot.delete_message(call.message.chat.id, call.message.message_id)
-        error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nValueError:<pre language="python">{traceback.format_exc()}</pre>\n\nContact: @damirtag'
+        error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id)
         print(error)
 
@@ -99,7 +98,7 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
             print("%s has been removed successfuly" % title)
     except:
         await bot.delete_message(call.message.chat.id, call.message.message_id)
-        error = f'Произошла ошибка при загрузке.\nError while downloading content\n\nValueError:<pre language="python">{traceback.format_exc()}</pre>\n\nContact: @damirtag'
+        error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id)
         print(error)
 
@@ -126,8 +125,6 @@ async def downloading(message: types.Message):
         # InlineKeyboardButton(text='Image (TikTok)',
         #                      callback_data='download_img'),
     )
-    await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
-    await asyncio.sleep(0.3)
     await message.reply(text=text, reply_markup=keyboard)
 
 
