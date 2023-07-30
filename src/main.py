@@ -1,4 +1,4 @@
-from config import TOKEN
+from ExampleConfig import TOKEN
 import os
 from datetime import datetime
 import yt_dlp as ytd
