@@ -7,6 +7,8 @@ from aiogram import asyncio
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatActions
 from aiogram.dispatcher.filters import Text
+# import requests
+# from bs4 import BeautifulSoup
 # =========
 storage = MemoryStorage()
 bot = Bot(TOKEN, parse_mode=types.ParseMode.HTML)
@@ -146,4 +148,7 @@ async def downloading(message: types.Message):
 
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    online = "bot is online!"
+    offline = "boot is offline!"
+    executor.start_polling(dp, skip_updates=True,
+                           on_startup=online, on_shutdown=offline, fast=True)
