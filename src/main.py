@@ -146,9 +146,5 @@ async def downloading(message: types.Message):
     )
     await message.reply(text=text, reply_markup=keyboard)
 
-
 if __name__ == '__main__':
-    online = "bot is online!"
-    offline = "boot is offline!"
-    executor.start_polling(dp, skip_updates=True,
-                           on_startup=online, on_shutdown=offline, fast=True)
+    executor.start_polling(dp, skip_updates=True, fast=True)
