@@ -22,7 +22,7 @@ async def hello(message: types.Message):
     start_button = ['Установить/Download']
     keyboards = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboards.add(*start_button)
-    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\nJust send me a link to install!\n\n🇷🇺 Привет! Это бот который устанавливает видео и аудио с Ютуба, ТикТока и Риллсов,\nПросто скинь мне ссылку!"
+    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\n\n🇷🇺 Сәлем! Бұл YouTube, TikTok, Reels және Twitch Clips сайттарынан бейне мен аудио орнататын бот"
 
     await message.reply(text=start, reply_markup=keyboards)
 
@@ -37,11 +37,11 @@ async def close(call: types.CallbackQuery):
 
 @dp.callback_query_handler(text='download_mp4')
 async def inline_keyboard_mp4(call: types.CallbackQuery):
-    loading = "<i>Загружаю | Loading</i>"
+    loading = "<i>Жүктеу | Loading</i>"
     await call.message.edit_text(text=loading)
     chat_id = call.message.chat.id
     try:
-        service = "(twitch.tv|youtube.com|youtu.be)"
+        service = "twitch.tv"
         if link.find(service) != -1:
             print("downloading with 720p")
             anotheroptions = {
@@ -92,11 +92,11 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
     except:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
-            InlineKeyboardButton(text='❌ Close | Закрыть',
+            InlineKeyboardButton(text='❌ Жабу | Close',
                                  callback_data='close'),
         )
         await bot.delete_message(call.message.chat.id, call.message.message_id)
-        error = f'<i>Произошла ошибка при загрузке.\nError while loading content</i>\n\nContact: @damirtag'
+        error = f'<i>Жүктеу кезінде қате орын алды\nError while loading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
 
 
@@ -106,7 +106,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
 @dp.callback_query_handler(text='download_mp3')
 async def inline_keyboard_mp3(call: types.CallbackQuery):
     try:
-        loading = "<i>Загружаю | Loading</i>"
+        loading = "<i>Жүктеу | Loading</i>"
         await call.message.edit_text(text=loading)
         chat_id = call.message.chat.id
         options = {
@@ -142,18 +142,13 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
     except:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
-            InlineKeyboardButton(text='❌ Close | Закрыть',
+            InlineKeyboardButton(text='❌ Жабу | Close',
                                  callback_data='close'),
         )
         await bot.delete_message(call.message.chat.id, call.message.message_id)
-        error = f'<i>Произошла ошибка при загрузке.\nError while downloading content</i>\n\nContact: @damirtag'
+        error = f'<i>Жүктеу кезінде қате орын алды\nError while downloading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
 
-
-# Установить
-@dp.message_handler(Text(equals='Установить/Download'))
-async def start_dw(message: types.Message):
-    await message.reply('Скинь ссылку!\n/Send me a link!')
 
 
 @dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com/reel/|twitch\.tv/)')
@@ -165,7 +160,7 @@ async def downloading(message: types.Message):
     message_id = message.message_id
     # messages texts
     print(f"{username} sended {link}")
-    text = "В каком виде скачать?\nIn what type to download?"
+    text = "Қандай пішінде жүктеп алу керек?\nIn what type to download?"
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
         InlineKeyboardButton(text='📹', callback_data='download_mp4'),
