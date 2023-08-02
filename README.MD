@@ -1,3 +1,5 @@
-﻿# yerzhanbot-git
+# yerzhanbot-git
 
-# For control versions of Telegram bot based on <a href="https://aiogram.dev/">AIOGRAM</a>
+### For controll versions of <a href="https://t.me/yerzhanakh_bot">Telegram Bot</a>
+
+### based on <a href="https://aiogram.dev/">AIOGRAM</a>
