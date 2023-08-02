@@ -22,7 +22,7 @@ async def hello(message: types.Message):
     start_button = ['Установить/Download']
     keyboards = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboards.add(*start_button)
-    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\n\n🇷🇺 Сәлем! Бұл YouTube, TikTok, Reels және Twitch Clips сайттарынан бейне мен аудио орнататын бот"
+    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\nем🇰🇿! Бұл YouTube, TikTok, Reels және Twitch Clips сайттарынан бейне мен аудио орнататын бот"
 
     await message.reply(text=start, reply_markup=keyboards)
 
@@ -148,7 +148,6 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
         await bot.delete_message(call.message.chat.id, call.message.message_id)
         error = f'<i>Жүктеу кезінде қате орын алды\nError while downloading content</i>\n\nContact: @damirtag'
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
-
 
 
 @dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com/reel/|twitch\.tv/)')
