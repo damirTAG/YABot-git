@@ -1,6 +1,7 @@
 from config import TOKEN
 import os
 from datetime import datetime
+import pytz
 import yt_dlp as ytd
 from aiogram import Dispatcher, Bot, executor, types
 from aiogram import asyncio
@@ -18,13 +19,9 @@ dp = Dispatcher(bot, storage=storage)
 
 @dp.message_handler(commands='start')
 async def hello(message: types.Message):
-    # Обычные кнопки
-    start_button = ['Установить/Download']
-    keyboards = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboards.add(*start_button)
-    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\nем🇰🇿! Бұл YouTube, TikTok, Reels және Twitch Clips сайттарынан бейне мен аудио орнататын бот"
+    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\n🇰🇿 Сәлем! Бұл YouTube/TikTok/Reels/Twitch Clips/SoundcloudTracks бот орнатушысы"
 
-    await message.reply(text=start, reply_markup=keyboards)
+    await message.reply(text=start)
 
 
 # CLOSE BUTTON
@@ -72,6 +69,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
                        'format': 'mp4',
                        'outtmpl': 'video/%(title)s.%(ext)s',
                        'cookies-from-browser': 'chrome',
+                       'cookies': 'cookies.txt',
                        }
             with ytd.YoutubeDL(options) as ytdl:
                 start = datetime.now()
@@ -106,6 +104,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
 @dp.callback_query_handler(text='download_mp3')
 async def inline_keyboard_mp3(call: types.CallbackQuery):
     try:
+        print("downloading mp3 format")
         loading = "<i>Жүктеу | Loading</i>"
         await call.message.edit_text(text=loading)
         chat_id = call.message.chat.id
@@ -150,15 +149,89 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
         await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
 
 
-@dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com/reel/|twitch\.tv/)')
-async def downloading(message: types.Message):
+@dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:soundcloud\.com)')
+async def soundload(message: types.Message):
+    link = message.text
+    current_date = datetime.now(pytz.timezone('Asia/Almaty'))
+    if current_date.tzinfo == None or current_date.\
+            tzinfo.utcoffset(current_date) == None:
+        print("Unaware")
+    else:
+        print("=== BOT ACTION NOTICED ===")
     username = message.from_user.first_name
+    msg = message.text
+    print(f"[{current_date}] {username} : {msg}")
+    try:
+        print("downloading mp3 format | SOUNDCLOUD")
+        options = {
+            'skip-download': True,
+            'writethumbnail': True,
+            'embedthumbnail': True,
+            'format': 'bestaudio/best',
+            'outtmpl': 'audio/%(title)s',
+            'postprocessors': [
+                {
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                },
+                {
+                    'key': 'EmbedThumbnail',
+                }
+            ],
+            'cookies-from-browser': 'chrome',
+        }
+        with ytd.YoutubeDL(options) as ytdl:
+            start = datetime.now()
+            ytdl.download([link])
+            end = datetime.now()
+
+        result = ytdl.extract_info("{}".format(link))
+        title = ytdl.prepare_filename(result)
+        delete = (f'{title}.mp3')
+        audio = open(f'{title}.mp3', 'rb')
+        loadtime = (end - start).total_seconds() * 1**1
+        none = "Damir the best"
+        video_title = result.get('title', none)
+        # user = result.get('user', none)
+        # artist = result.get('artist', none)
+        # album = result.get('album', none)
+        caption = f"<b>Title:</b> <a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
+        chat_id = message.chat.id
+        message_id = message.message_id
+        await bot.send_chat_action(message.chat.id, ChatActions.UPLOAD_AUDIO)
+        await asyncio.sleep(3)
+        await bot.send_audio(chat_id=chat_id, audio=audio, caption=caption, reply_to_message_id=message_id)
+        # deleting file after
+        os.remove(delete)
+        print("%s has been removed successfuly" % title)
+    except ValueError:
+        keyboard = InlineKeyboardMarkup()
+        keyboard.add(
+            InlineKeyboardButton(text='❌ Жабу | Close',
+                                 callback_data='close'),
+        )
+        chat_id = message.chat.id
+        error = f'<i>Жүктеу кезінде қате орын алды\nError while downloading content</i>\n\nContact: @damirtag'
+        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
+
+
+@dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com/reel/|pinterest.com|twitch\.tv/)')
+async def downloading(message: types.Message):
+    current_date = datetime.now(pytz.timezone('Asia/Almaty'))
+    if current_date.tzinfo == None or current_date.\
+            tzinfo.utcoffset(current_date) == None:
+        print("Unaware")
+    else:
+        print("=== BOT ACTION NOTICED ===")
+    username = message.from_user.first_name
+    msg = message.text
+    print(f"[{current_date}] {username} : {msg}")
     global link
     link = message.text
     global message_id
     message_id = message.message_id
     # messages texts
-    print(f"{username} sended {link}")
     text = "Қандай пішінде жүктеп алу керек?\nIn what type to download?"
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
