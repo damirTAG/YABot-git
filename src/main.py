@@ -37,19 +37,13 @@ async def close(call: types.CallbackQuery):
 
 @dp.callback_query_handler(text='download_mp4')
 async def inline_keyboard_mp4(call: types.CallbackQuery):
+    loading = "<i>Загружаю | Loading</i>"
+    await call.message.edit_text(text=loading)
+    chat_id = call.message.chat.id
     try:
-        loading = "<i>Загружаю | Loading</i>"
-        await call.message.edit_text(text=loading)
-        chat_id = call.message.chat.id
-        list = ["twitch.tv", "youtube.com", "youtu.be"]
-
-        def checkIfMatch(elem):
-            if len(elem) == 1:
-                return True
-            else:
-                return False
-        result = any(checkIfMatch for elem in list)
-        if result == True:
+        service = "(twitch.tv|youtube.com|youtu.be)"
+        if link.find(service) != -1:
+            print("downloading with 720p")
             anotheroptions = {
                 'format': 'mp4[height<=720]',
                 'skip-download': True,
@@ -73,6 +67,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
                 os.remove(title)
                 print("%s has been removed successfuly" % title)
         else:
+            print("downloading with 1080p")
             options = {'skip-download': True,
                        'format': 'mp4',
                        'outtmpl': 'video/%(title)s.%(ext)s',
@@ -90,11 +85,10 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
                 await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_VIDEO)
                 await asyncio.sleep(3)
                 loadtime = (end - start).total_seconds() * 1**1
-                caption = f"<a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
+                caption = f"Title: <a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
                 await bot.send_video(chat_id=chat_id, video=video, caption=caption, reply_to_message_id=message_id)
                 os.remove(title)
                 print("%s has been removed successfuly" % title)
-
     except:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
@@ -164,12 +158,13 @@ async def start_dw(message: types.Message):
 
 @dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com/reel/|twitch\.tv/)')
 async def downloading(message: types.Message):
+    username = message.from_user.first_name
     global link
     link = message.text
     global message_id
     message_id = message.message_id
     # messages texts
-
+    print(f"{username} sended {link}")
     text = "В каком виде скачать?\nIn what type to download?"
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
