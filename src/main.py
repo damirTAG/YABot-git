@@ -68,7 +68,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
                 await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_VIDEO)
                 await asyncio.sleep(3)
                 loadtime = (end - start).total_seconds() * 1**1
-                caption = f"<a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
+                caption = f"Title: <a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
                 await bot.send_video(chat_id=chat_id, video=video, caption=caption, reply_to_message_id=message_id)
                 os.remove(title)
                 print("%s has been removed successfuly" % title)
@@ -132,12 +132,12 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
             ytdl.download([link])
             result = ytdl.extract_info("{}".format(link))
             title = ytdl.prepare_filename(result)
-            # video_title = result.get('title', None)
+            video_title = result.get('title', None)
             delete = (f'{title}.mp3')
             audio = open(f'{title}.mp3', 'rb')
             end = datetime.now()
             loadtime = (end - start).total_seconds() * 1**1
-            caption = f"<a href='{link}'>Ссылка | Link</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
+            caption = f"Title: <a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
             await bot.delete_message(call.message.chat.id, call.message.message_id)
             await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_AUDIO)
             await asyncio.sleep(3)
