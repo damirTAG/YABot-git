@@ -41,29 +41,61 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
         loading = "<i>Загружаю | Loading</i>"
         await call.message.edit_text(text=loading)
         chat_id = call.message.chat.id
-        options = {'skip-download': True,
-                   'format': 'mp4[height<=720]',
-                   'outtmpl': 'video/%(title)s.%(ext)s',
-                   'cookies-from-browser': 'chrome',
-                   }
+        list = ["twitch.tv", "youtube.com", "youtu.be"]
 
-        with ytd.YoutubeDL(options) as ytdl:
-            start = datetime.now()
-            ytdl.download([link])
-            result = ytdl.extract_info("{}".format(link))
-            title = ytdl.prepare_filename(result)
-            video_title = result.get('title', None)
-            video = open(f'{title}', 'rb')
-            end = datetime.now()
-            await bot.delete_message(call.message.chat.id, call.message.message_id)
-            await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_VIDEO)
-            await asyncio.sleep(3)
-            loadtime = (end - start).total_seconds() * 1**1
-            caption = f"<a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
-            await bot.send_video(chat_id=chat_id, video=video, caption=caption, reply_to_message_id=message_id)
-            os.remove(title)
-            print("%s has been removed successfuly" % title)
-    except ValueError:
+        def checkIfMatch(elem):
+            if len(elem) == 1:
+                return True
+            else:
+                return False
+        result = any(checkIfMatch for elem in list)
+        if result == True:
+            anotheroptions = {
+                'format': 'mp4[height<=720]',
+                'skip-download': True,
+                'outtmpl': 'video/%(title)s.%(ext)s',
+                'cookies-from-browser': 'chrome',
+            }
+            with ytd.YoutubeDL(anotheroptions) as ytdl:
+                start = datetime.now()
+                ytdl.download([link])
+                result = ytdl.extract_info("{}".format(link))
+                title = ytdl.prepare_filename(result)
+                video_title = result.get('title', None)
+                video = open(f'{title}', 'rb')
+                end = datetime.now()
+                await bot.delete_message(call.message.chat.id, call.message.message_id)
+                await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_VIDEO)
+                await asyncio.sleep(3)
+                loadtime = (end - start).total_seconds() * 1**1
+                caption = f"<a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
+                await bot.send_video(chat_id=chat_id, video=video, caption=caption, reply_to_message_id=message_id)
+                os.remove(title)
+                print("%s has been removed successfuly" % title)
+        else:
+            options = {'skip-download': True,
+                       'format': 'mp4',
+                       'outtmpl': 'video/%(title)s.%(ext)s',
+                       'cookies-from-browser': 'chrome',
+                       }
+            with ytd.YoutubeDL(options) as ytdl:
+                start = datetime.now()
+                ytdl.download([link])
+                result = ytdl.extract_info("{}".format(link))
+                title = ytdl.prepare_filename(result)
+                video_title = result.get('title', None)
+                video = open(f'{title}', 'rb')
+                end = datetime.now()
+                await bot.delete_message(call.message.chat.id, call.message.message_id)
+                await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_VIDEO)
+                await asyncio.sleep(3)
+                loadtime = (end - start).total_seconds() * 1**1
+                caption = f"<a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
+                await bot.send_video(chat_id=chat_id, video=video, caption=caption, reply_to_message_id=message_id)
+                os.remove(title)
+                print("%s has been removed successfuly" % title)
+
+    except:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
             InlineKeyboardButton(text='❌ Close | Закрыть',
@@ -100,6 +132,7 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
             ytdl.download([link])
             result = ytdl.extract_info("{}".format(link))
             title = ytdl.prepare_filename(result)
+            # video_title = result.get('title', None)
             delete = (f'{title}.mp3')
             audio = open(f'{title}.mp3', 'rb')
             end = datetime.now()
