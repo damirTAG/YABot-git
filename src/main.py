@@ -1,29 +1,34 @@
 from config import TOKEN
 import os
-import random
+import logging
+from convert import Converter
 from datetime import datetime
 import pytz
 import yt_dlp as ytd
-from yt_dlp.postprocessor import MetadataParserPP
 from aiogram import Dispatcher, Bot, executor, types
 from aiogram import asyncio
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatActions
-from aiogram.dispatcher.filters import Text
-from requests import get
-from json import loads
-from bs4 import BeautifulSoup as bs
+# from aiogram.dispatcher.filters import Text
+# from savify import Savify
+# from savify.types import Type, Format, Quality
+# from savify.utils import PathHolder
+# from requests import get
+# from json import loads
+# from bs4 import BeautifulSoup as bs
 # =========
 storage = MemoryStorage()
 bot = Bot(TOKEN, parse_mode=types.ParseMode.HTML)
 dp = Dispatcher(bot, storage=storage)
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger()
 # =========
 
 
 @dp.message_handler(commands='start')
 async def hello(message: types.Message):
     start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\n🇰🇿 Сәлем! Бұл YouTube/TikTok/Reels/Twitch Clips/SoundcloudTracks бот орнатушысы"
-
     await message.reply(text=start)
 
 
@@ -31,6 +36,31 @@ async def hello(message: types.Message):
 @dp.callback_query_handler(text="close")
 async def close(call: types.CallbackQuery):
     await bot.delete_message(call.message.chat.id, call.message.message_id)
+
+# speech rec
+
+
+@dp.message_handler(content_types=['voice', 'video_note'])
+async def get_audio_messages(message: types.Message):
+    file_id = message.voice.file_id if message.content_type in [
+        'voice'] else message.video_note.file_id
+    file_info = await bot.get_file(file_id)
+    downloaded_file = await bot.download_file(file_info.file_path)
+    file_name = str(message.message_id) + '.ogg'
+    name = message.chat.first_name if message.chat.first_name else 'No_name'
+    logger.info(
+        f"Chat {name} (ID: {message.chat.id}) download file {file_name}")
+
+    with open(file_name, 'wb') as new_file:
+        new_file.write(downloaded_file.getvalue())
+    converter = Converter(file_name)
+    os.remove(file_name)
+    message_text = f"<i>{converter.audio_to_text()}</i>"
+    del converter
+    await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
+    await asyncio.sleep(3)
+    await bot.send_message(message.chat.id, message_text,
+                           reply_to_message_id=message.message_id)
 
 # video download
 
@@ -70,7 +100,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
         print("downloading with 1080p")
         options = {'skip-download': True,
                    'format': 'mp4',
-                   'outtmpl': 'video/%(title)s.%(ext)s',
+                   'outtmpl': 'video/%(id)s.%(ext)s',
                    'cookies-from-browser': 'chrome',
                    'cookies': 'cookies.txt',
                    'noplaylist': True,
@@ -103,6 +133,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
     print("%s has been removed successfuly" % title)
 
 
+# audio section here mp3/soundcloud/spotify
 # audio download
 
 
@@ -117,7 +148,7 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
         'skip-download': True,
         'noplaylist': True,
         'format': 'bestaudio/best',
-        'outtmpl': 'audio/%(title)s',
+        'outtmpl': 'audio/%(id)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -165,7 +196,7 @@ async def soundload(message: types.Message):
             tzinfo.utcoffset(current_date) == None:
         print("Unaware")
     else:
-        print("=== BOT ACTION NOTICED ===")
+        print("======")
     username = message.from_user.first_name
     msg = message.text
     print(f"[{current_date}] {username} : {msg}")
@@ -187,14 +218,14 @@ async def soundload(message: types.Message):
                 'key': 'EmbedThumbnail',
             }
         ],
-        'cookies-from-browser': 'chrome',
+        # 'cookies-from-browser': 'chrome',
     }
     try:
         with ytd.YoutubeDL(options) as ytdl:
             start = datetime.now()
             ytdl.download([link])
             end = datetime.now()
-    except ValueError:
+    except:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
             InlineKeyboardButton(text='❌ Жабу | Close',
@@ -202,7 +233,7 @@ async def soundload(message: types.Message):
         )
         chat_id = message.chat.id
         error = f'<i>Жүктеу кезінде қате орын алды\nError while downloading content</i>\n\nContact: @damirtag'
-        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
+        return await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
     result = ytdl.extract_info("{}".format(link))
     title = ytdl.prepare_filename(result)
     delete = (f'{title}.mp3')
@@ -233,7 +264,7 @@ async def downloading(message: types.Message):
             tzinfo.utcoffset(current_date) == None:
         print("Unaware")
     else:
-        print("=== BOT ACTION NOTICED ===")
+        print("======")
     username = message.from_user.first_name
     msg = message.text
     print(f"[{current_date}] {username} : {msg}")
@@ -254,4 +285,5 @@ async def downloading(message: types.Message):
     return await message.reply(text=text, reply_markup=keyboard)
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True, fast=True)
+    logger.info("Starting bot")
+    executor.start_polling(dp, skip_updates=True)
