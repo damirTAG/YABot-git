@@ -3,12 +3,14 @@ import os
 import logging
 from convert import Converter
 from datetime import datetime
+from io import BytesIO
 import pytz
 import yt_dlp as ytd
 from aiogram import Dispatcher, Bot, executor, types
 from aiogram import asyncio
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatActions
+from PIL import Image, ImageFilter, ImageFont, ImageDraw
 # from aiogram.dispatcher.filters import Text
 # from savify import Savify
 # from savify.types import Type, Format, Quality
@@ -28,7 +30,7 @@ logger = logging.getLogger()
 
 @dp.message_handler(commands='start')
 async def hello(message: types.Message):
-    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\n🇰🇿 Сәлем! Бұл YouTube/TikTok/Reels/Twitch Clips/SoundcloudTracks бот орнатушысы"
+    start = "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Hello there! This is YouTube/TikTok/Reels video and audio bot installer\n\n🇰🇿 Сәлем! Бұл YouTube/TikTok/Reels/Twitch Clips/SoundcloudTracks бот орнатушысы"
     await message.reply(text=start)
 
 
@@ -37,30 +39,67 @@ async def hello(message: types.Message):
 async def close(call: types.CallbackQuery):
     await bot.delete_message(call.message.chat.id, call.message.message_id)
 
+
+# quote gen
+@dp.message_handler(commands=['q'])
+async def quotegen(message: types.Message):
+    user_id = message.reply_to_message.from_user.id
+    nick = message.from_user.full_name
+
+    try:
+        msg = message.reply_to_message.text
+    except AttributeError:
+        msg = 'no'
+
+    wc = Image.open("quotegenbg.jpg")
+    getphoto = await bot.get_user_profile_photos(user_id=user_id, limit=1)
+    asset = (dict((getphoto.photos[1])).get("file_id"))
+    data = BytesIO(await asset.read())
+
+    pfp = Image.open(data)
+    draw = ImageDraw.Draw(wc)
+    font = ImageFont.truetype("BalsamiqSans-BoldItalic.ttf", 10)
+    text = f"{nick}: {message.text}"
+
+    pfp = pfp.resize((211, 181))
+    wc.paste(pfp, (30, 28))
+    draw.text((26, 235), text, font=font, fill='white')
+    wc.save("q.jpg")
+    photo = open('q.jpg', 'rb')
+
+    await bot.send_photo(chat_id=chat_id, photo=photo, reply_to_message_id=msg)
+
 # speech rec
 
 
 @dp.message_handler(content_types=['voice', 'video_note'])
 async def get_audio_messages(message: types.Message):
-    file_id = message.voice.file_id if message.content_type in [
-        'voice'] else message.video_note.file_id
-    file_info = await bot.get_file(file_id)
-    downloaded_file = await bot.download_file(file_info.file_path)
-    file_name = str(message.message_id) + '.ogg'
-    name = message.chat.first_name if message.chat.first_name else 'No_name'
-    logger.info(
-        f"Chat {name} (ID: {message.chat.id}) download file {file_name}")
+    try:
+        file_id = message.voice.file_id if message.content_type in [
+            'voice'] else message.video_note.file_id
+        file_info = await bot.get_file(file_id)
+        downloaded_file = await bot.download_file(file_info.file_path)
+        file_name = str(message.message_id) + '.ogg'
+        name = message.chat.first_name if message.chat.first_name else 'No_name'
+        logger.info(
+            f"Chat {name} (ID: {message.chat.id}) download file {file_name}")
 
-    with open(file_name, 'wb') as new_file:
-        new_file.write(downloaded_file.getvalue())
-    converter = Converter(file_name)
-    os.remove(file_name)
-    message_text = f"<i>{converter.audio_to_text()}</i>"
-    del converter
-    await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
-    await asyncio.sleep(3)
-    await bot.send_message(message.chat.id, message_text,
-                           reply_to_message_id=message.message_id)
+        with open(file_name, 'wb') as new_file:
+            new_file.write(downloaded_file.getvalue())
+        converter = Converter(file_name)
+        os.remove(file_name)
+        message_text = f"<i><b>{converter.audio_to_text()}</b></i>"
+        del converter
+        await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
+        await asyncio.sleep(3)
+        await bot.send_message(message.chat.id, message_text,
+                               reply_to_message_id=message.message_id)
+    except:
+        nowords = "<i>Внятней <s>пиздеть</s> говорить надо</i>"
+        await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
+        await asyncio.sleep(3)
+        await bot.send_message(message.chat.id, nowords,
+                               reply_to_message_id=message.message_id)
 
 # video download
 
@@ -101,8 +140,8 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
         options = {'skip-download': True,
                    'format': 'mp4',
                    'outtmpl': 'video/%(id)s.%(ext)s',
-                   'cookies-from-browser': 'chrome',
-                   'cookies': 'cookies.txt',
+                   #    'cookies-from-browser': 'chrome',
+                   #    'cookies': 'cookies.txt',
                    'noplaylist': True,
                    }
         try:
@@ -222,9 +261,9 @@ async def soundload(message: types.Message):
     }
     try:
         with ytd.YoutubeDL(options) as ytdl:
-            start = datetime.now()
-            ytdl.download([link])
-            end = datetime.now()
+            # start = datetime.now()
+            ytdl.download([link])       
+            # end = datetime.now()
     except:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
@@ -238,14 +277,15 @@ async def soundload(message: types.Message):
     title = ytdl.prepare_filename(result)
     delete = (f'{title}.mp3')
     audio = open(f'{title}.mp3', 'rb')
-    loadtime = (end - start).total_seconds() * 1**1
+    # loadtime = (end - start).total_seconds() * 1**1
     none = "Damir the best"
     video_title = result.get('title', none)
-    # user = result.get('user', none)
-    # artist = result.get('artist', none)
-    # album = result.get('album', none)
+    uploader = result.get('uploader', none)
+    uploder_link = f'https://soundcloud.com/user-{uploader}'
+    like_count = result.get('like_count', none)
+    comment_count = result.get('comment_count', none)
     username = message.from_user.username
-    caption = f"<b>Title:</b> <a href='{link}'>{video_title}</a>\n<i>Loading time: {loadtime:.01f}sec</i>"
+    caption = f"<b><i>ℹ️ Info:</i>\n🎵 Track: <a href='{link}'>{video_title}</a>\n👤 Author: <a href='{uploder_link}'>{uploader}</a>\n❤️ Likes: <a href='{link}'>{like_count}</a>\n💬 Comments count: <a href='{link}'>{comment_count}</a></b>"
     chat_id = message.chat.id
     message_id = message.message_id
     await bot.send_chat_action(message.chat.id, ChatActions.UPLOAD_AUDIO)
@@ -272,14 +312,14 @@ async def downloading(message: types.Message):
     link = message.text
     global message_id
     message_id = message.message_id
+    global chat_id
+    chat_id = await message.chat.id
     # messages texts
     text = "Қандай пішінде жүктеп алу керек?\nIn what type to download?"
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
         InlineKeyboardButton(text='📹', callback_data='download_mp4'),
         InlineKeyboardButton(text='🔊', callback_data='download_mp3'),
-        # InlineKeyboardButton(text='Image (TikTok)',
-        #                      callback_data='download_img'),
     )
     await asyncio.sleep(0.1)
     return await message.reply(text=text, reply_markup=keyboard)
