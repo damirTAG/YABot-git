@@ -1,9 +1,9 @@
 from config import TOKEN
 import os
 import logging
+from random import randrange
 from convert import Converter
 from datetime import datetime
-from io import BytesIO
 import pytz
 import yt_dlp as ytd
 from aiogram import Dispatcher, Bot, executor, types
@@ -40,34 +40,14 @@ async def close(call: types.CallbackQuery):
     await bot.delete_message(call.message.chat.id, call.message.message_id)
 
 
-# quote gen
-@dp.message_handler(commands=['q'])
-async def quotegen(message: types.Message):
-    user_id = message.reply_to_message.from_user.id
-    nick = message.from_user.full_name
-
-    try:
-        msg = message.reply_to_message.text
-    except AttributeError:
-        msg = 'no'
-
-    wc = Image.open("quotegenbg.jpg")
-    getphoto = await bot.get_user_profile_photos(user_id=user_id, limit=1)
-    asset = (dict((getphoto.photos[1])).get("file_id"))
-    data = BytesIO(await asset.read())
-
-    pfp = Image.open(data)
-    draw = ImageDraw.Draw(wc)
-    font = ImageFont.truetype("BalsamiqSans-BoldItalic.ttf", 10)
-    text = f"{nick}: {message.text}"
-
-    pfp = pfp.resize((211, 181))
-    wc.paste(pfp, (30, 28))
-    draw.text((26, 235), text, font=font, fill='white')
-    wc.save("q.jpg")
-    photo = open('q.jpg', 'rb')
-
-    await bot.send_photo(chat_id=chat_id, photo=photo, reply_to_message_id=msg)
+# roll
+@dp.message_handler(commands=['roll', 'ролл'], commands_prefix='!/')
+async def rate(message: types.Message):
+    nick = message.from_user.first_name
+    chat_id = message.chat.id
+    random = (randrange(101))
+    roll = f'🎱 <b>{nick}</b> роллит! (1-100): <code>{random}</code>!'
+    return await bot.send_message(chat_id=chat_id, reply_to_message_id=message.message_id, text=roll)
 
 # speech rec
 
@@ -95,7 +75,7 @@ async def get_audio_messages(message: types.Message):
         await bot.send_message(message.chat.id, message_text,
                                reply_to_message_id=message.message_id)
     except:
-        nowords = "<i>Внятней <s>пиздеть</s> говорить надо</i>"
+        nowords = "<i>Хуй со рта убери</i>"
         await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
         await asyncio.sleep(3)
         await bot.send_message(message.chat.id, nowords,
@@ -229,6 +209,7 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
 @dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:soundcloud\.com)')
 @dp.async_task
 async def soundload(message: types.Message):
+    await bot.send_chat_action(message.chat.id, ChatActions.RECORD_AUDIO)
     link = message.text
     current_date = datetime.now(pytz.timezone('Asia/Almaty'))
     if current_date.tzinfo == None or current_date.\
@@ -262,7 +243,7 @@ async def soundload(message: types.Message):
     try:
         with ytd.YoutubeDL(options) as ytdl:
             # start = datetime.now()
-            ytdl.download([link])       
+            ytdl.download([link])
             # end = datetime.now()
     except:
         keyboard = InlineKeyboardMarkup()
@@ -272,7 +253,7 @@ async def soundload(message: types.Message):
         )
         chat_id = message.chat.id
         error = f'<i>Жүктеу кезінде қате орын алды\nError while downloading content</i>\n\nContact: @damirtag'
-        return await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
+        await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
     result = ytdl.extract_info("{}".format(link))
     title = ytdl.prepare_filename(result)
     delete = (f'{title}.mp3')
@@ -288,12 +269,22 @@ async def soundload(message: types.Message):
     caption = f"<b><i>ℹ️ Info:</i>\n🎵 Track: <a href='{link}'>{video_title}</a>\n👤 Author: <a href='{uploder_link}'>{uploader}</a>\n❤️ Likes: <a href='{link}'>{like_count}</a>\n💬 Comments count: <a href='{link}'>{comment_count}</a></b>"
     chat_id = message.chat.id
     message_id = message.message_id
-    await bot.send_chat_action(message.chat.id, ChatActions.UPLOAD_AUDIO)
-    await asyncio.sleep(3)
-    await bot.send_audio(chat_id=chat_id, audio=audio, caption=caption, reply_to_message_id=message_id)
-    # deleting file after
-    os.remove(delete)
-    print("%s has been removed successfuly" % title)
+    try:
+        await bot.send_chat_action(message.chat.id, ChatActions.UPLOAD_AUDIO)
+        return await bot.send_audio(chat_id=chat_id, audio=audio, caption=caption, reply_to_message_id=message_id)
+    except:
+        keyboard = InlineKeyboardMarkup()
+        keyboard.add(
+            InlineKeyboardButton(text='❌ Жабу | Close',
+                                 callback_data='close'),
+        )
+        chat_id = message.chat.id
+        error = f'<i>Жүктеу кезінде қате орын алды\nError while sending content</i>\n\nContact: @damirtag'
+        return await bot.send_message(text=error, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
+    finally:
+        # deleting file after
+        os.remove(delete)
+        print("%s has been removed successfuly" % title)
 
 
 @dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com/reel/|pinterest.com|twitch\.tv/)')
