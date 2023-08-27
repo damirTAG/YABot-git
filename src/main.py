@@ -149,6 +149,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
 @dp.message_handler(regexp='(?:https?://)?(?:www\.)?(?:vk\.com/clip|tiktok\.com|instagram\.com/reel/|instagram\.com/stories/|twitch\.tv/)')
 @dp.async_task
 async def loadvideo(message: types.Message):
+    link = message.text
     await bot.send_chat_action(message.chat.id, ChatActions.RECORD_VIDEO)
     options = {'skip-download': True,
                'format': 'mp4',
@@ -175,7 +176,7 @@ async def loadvideo(message: types.Message):
     video = open(f'{title}', 'rb')
     caption = f"<b>Title: <a href='{link}'>{video_title}</a></b>"
     try:
-        return await bot.send_video(chat_id=message.chat.id, video=video, caption=caption, reply_to_message_id=message_id)
+        return await bot.send_video(chat_id=message.chat.id, video=video, caption=caption, reply_to_message_id=message.message_id)
     except ValueError:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
@@ -196,6 +197,7 @@ async def loadvideo(message: types.Message):
 @dp.callback_query_handler(text='download_mp3')
 @dp.async_task
 async def inline_keyboard_mp3(call: types.CallbackQuery):
+
     print("downloading mp3 format")
     loading = "<i>Жүктеу | Loading</i>"
     await call.message.edit_text(text=loading)
