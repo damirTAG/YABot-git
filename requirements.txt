@@ -17,4 +17,5 @@ pytz==2023.3
 websockets==11.0.3
 yarl==1.9.2
 yt-dlp==2023.7.6
-datetime==2023.7.19
+SpeechRecognition
+openai
