@@ -13,21 +13,22 @@ import json
 import aiohttp
 import shutil
 import logging
-import base64
 
 
-from tools import Tools, ConsoleColors, Platforms
+from tools import Tools, ConsoleColors, Platforms, SoundCloudDownloader
 from pin_crawler import PinterestScraper
 from TikTok import TikTok
 from convert import Converter
 from database import Database
 from routes import Routes
+from Prayer import init as init_prayer, PrayerCheck
+# from exceptions import SoundCloudSearchException
 
 
 from mutagen.id3 import ID3, TIT2, TPE1, APIC
 from random import randrange
 from tinytag import TinyTag
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, unquote
 from tqdm.asyncio import tqdm
 from aiogram.utils.exceptions import ChatNotFound
@@ -37,7 +38,7 @@ from aiogram.dispatcher.filters import Text
 from aiogram import Dispatcher, Bot, executor, types
 from aiogram import asyncio
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatActions, InputMediaPhoto, InputMediaVideo, ParseMode
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatActions, InputMediaPhoto, InputMediaVideo, ParseMode, InlineQuery, InputTextMessageContent, InlineQueryResultArticle
 # =========
 storage = MemoryStorage()
 semaphore = asyncio.Semaphore(10)
@@ -54,7 +55,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger()
 DAMIR_USER_ID = 1038468423
 GITHUB_REPO = 'None'
-
+prayer_check = PrayerCheck(bot)
 pl = Platforms()
 
 # =========
@@ -67,8 +68,9 @@ async def get_user_info(user_id):
         fullname = user.full_name
         return username, fullname
     except ChatNotFound:
-        return None, None
         print('chat not found skipping...')
+        return None, None
+        
 
 @dp.message_handler(commands='start')
 async def hello(message: types.Message):
@@ -76,6 +78,8 @@ async def hello(message: types.Message):
     if message.chat.type == 'private':
         username, fullname = await get_user_info(message.from_user.id)
         database.insert_data('users', data=(message.from_user.id, username, fullname))
+        start = start_txt
+        await message.reply(text=start)
     # user_id = message.from_user.id
     # try:
     #     with open('user_ids.json', 'r') as file:
@@ -89,8 +93,7 @@ async def hello(message: types.Message):
     # with open('user_ids.json', 'w') as file:
     #     json.dump(user_ids, file)
 
-    start = start_txt
-    await message.reply(text=start)
+    
 
 
 @dp.message_handler(commands=['sendall'])
@@ -114,7 +117,7 @@ async def help(message: types.Message):
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
         InlineKeyboardButton(
-            text='Dev 🧑‍💻', url='https://github.com/damirTAG'),
+            text='Dev 🧑‍💻', url='https://t.me/DAMIRTAG'),
     )
     await message.reply(text=help, reply_markup=keyboard)
 
@@ -124,6 +127,18 @@ async def help(message: types.Message):
 @dp.callback_query_handler(text="close")
 async def close(call: types.CallbackQuery):
     await bot.delete_message(call.message.chat.id, call.message.message_id)
+
+
+@dp.callback_query_handler(text="toRead")
+async def Prayer_readed(call: types.CallbackQuery):
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("✅🤲", callback_data="readConfirmed"))
+
+    await bot.edit_message_reply_markup(
+            call.message.chat.id, 
+            call.message.message_id, 
+            reply_markup=keyboard
+        )
 
 
 # roll
@@ -139,10 +154,17 @@ async def rate(message: types.Message):
 # get routes from https://mountain.kz/
 current_page = 0
 
-@dp.message_handler(commands=['routes'], commands_prefix='!/.')
+@dp.message_handler(commands=['routes', 'маршруты'], commands_prefix='!/.')
 async def routes_handler(message: types.Message):
     global message_id
     message_id = message.message_id
+    event_chat = message.chat
+    try:
+        logger.info(
+                f"(Chat: [ID]: {event_chat.id}, [Title]: {event_chat.title}) (User: [ID]: {message.from_user.id}, [Username]: {message.from_user.username}, [FN]: {message.from_user.first_name}, [SN]: {message.from_user.last_name}) Message: {message.text}")
+    except AttributeError:
+        pass
+    
     routes = Routes()
     route_data = routes.get_routes()
     
@@ -336,7 +358,7 @@ async def inline_keyboard_mp4(call: types.CallbackQuery):
 
 # if not youtube download
 
-ignore_ids = [-1001559555304, -1001919227306, -1001987624296]   # -1001559555304, -1001919227306, -1001987624296
+ignore_ids = [-1001559555304, -1001919227306, -1001987624296, -1002050266275]   # -1001559555304, -1001919227306, -1001987624296
 
 
 @dp.message_handler(regexp=r'(?:https?://)?(?:www\.)?(?:vk\.com/clip|twitch\.tv/)')
@@ -569,6 +591,8 @@ async def inline_keyboard_mp3(call: types.CallbackQuery):
         print("%s has been removed successfuly" % title)
 # soundcloud track install
 
+sc = SoundCloudDownloader
+
 
 @dp.message_handler(regexp=r'(?:https?://)?(?:www\.)?(?:soundcloud\.com)')
 @dp.async_task
@@ -671,6 +695,92 @@ async def soundload(message: types.Message):
                 # deleting file after
                 os.remove(delete)
                 print("%s has been removed successfuly" % title)
+
+
+def check_query(query, max_words=7):
+    words = query.split()
+    if len(words) > max_words:
+        return False
+
+@dp.message_handler(commands=['sc'])
+@dp.async_task
+async def soundsearch(message: types.Message):
+    chat_id = message.chat.id
+    event_chat = message.chat
+    if chat_id in ignore_ids:
+        return False
+    try:
+        logger.info(
+            f"(Chat: [ID]: {event_chat.id}, [Title]: {event_chat.title}) (User: [ID]: {message.from_user.id}, [Username]: {message.from_user.username}, [FN]: {message.from_user.first_name}, [SN]: {message.from_user.last_name}) Message: {message.text}")
+    except AttributeError:
+        pass
+
+    search_query = message.get_args()
+    if check_query(search_query) == False:
+        await message.reply('Search query is too long!')
+        return False
+    sc = SoundCloudDownloader(search_query)
+
+    try:
+        data = await sc.search()
+        
+        if not data:
+            raise SoundCloudSearchException("Track not found.")
+        
+        cursor.execute(
+                    'SELECT chat_id, message_id FROM video_cache WHERE video_link = ?', (data["webpage"],))
+        result = cursor.fetchone()
+        
+        if result:
+            from_chat_id, from_message_id = result
+            await bot.copy_message(message.chat.id, from_chat_id, from_message_id, reply_to_message_id=message.message_id)
+        else:
+            audio = await sc.async_download(data['id'], data['url'])
+            
+            # adding metadata 
+            try:
+                metadata = ID3()
+                metadata.add(TIT2(encoding=3, text=data['title']))
+                metadata.add(TPE1(encoding=3, text=data['uploader']))
+                metadata.save(audio)
+            except Exception as e:
+                print(f'error when metadata: {e}')
+            
+            caption = f'<a href="{data["webpage"]}">{data["title"]}</a> — {data["uploader"]}'
+            
+            try:
+                await bot.send_chat_action(chat_id=chat_id, action=ChatActions.UPLOAD_AUDIO)
+                sended_audio = await bot.send_audio(chat_id=chat_id, audio=open(audio, 'rb'), caption=caption, reply_to_message_id=message.message_id)
+                
+                cursor.execute('INSERT INTO video_cache (chat_id, message_id, video_link) VALUES (?, ?, ?)', (chat_id, sended_audio.message_id, data["webpage"]))
+                conn.commit()
+                print(f'[Soundcloud:track] | {data["webpage"]} cached')
+                
+            except Exception as e:
+                print(e)
+                keyboard = InlineKeyboardMarkup()
+                keyboard.add(
+                    InlineKeyboardButton(text='❌ Жабу | Close',
+                                        callback_data='close'),
+                )
+                return await bot.send_message(chat_id=chat_id, text=f'Error: {e}', reply_to_message_id=message.message_id, reply_markup=keyboard)
+            
+            finally:
+                # deleting file after
+                os.remove(audio)
+                print(f"{audio} has been removed successfully")
+
+    except SoundCloudSearchException as e:
+        print(f'error: {e}')
+        if "404" in str(e):
+            await bot.send_message(chat_id=chat_id, text="Track not found.")
+        elif "Query too long" in str(e):
+            await bot.send_message(chat_id=chat_id, text="Search query is too long.")
+    except Exception as e:
+        print(f'error: {e}')
+        return
+
+    
 
 
 @dp.message_handler(regexp=r'(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be)')
@@ -896,7 +1006,7 @@ async def inst_reels_handler(message: types.Message):
 
     try:
         logger.info(
-                f"(Chat: [ID]: {event_chat.id}, [Title]: {event_chat.title}) (User: [ID]: {message.from_user.id}, [Username]: {message.from_user.username}, [FN]: {message.from_user.first_name}, [SN]: {message.from_user.last_name}) Message: {message.text}")
+            f"(Chat: [ID]: {event_chat.id}, [Title]: {event_chat.title}) (User: [ID]: {message.from_user.id}, [Username]: {message.from_user.username}, [FN]: {message.from_user.first_name}, [SN]: {message.from_user.last_name}) Message: {message.text}")
     except AttributeError:
         pass
 
@@ -904,12 +1014,12 @@ async def inst_reels_handler(message: types.Message):
         return False
     else:
         database = Database('database/users.db')
-        if message.chat.type == 'private':
-            username, fullname = await get_user_info(event_chat.id)
-            database.insert_data('users', data=(event_chat.id, username, fullname))
+
+        username, fullname = await get_user_info(event_chat.id)
+        reel_url = await tools.convert_share_urls(message.text)
+
         await bot.send_chat_action(message.chat.id, ChatActions.RECORD_VIDEO)
         
-        reel_url = await tools.convert_share_urls(message.text)
         cursor.execute(
                 'SELECT chat_id, message_id FROM video_cache WHERE video_link = ?', (reel_url,))
         result = cursor.fetchone()
@@ -952,11 +1062,95 @@ async def inst_reels_handler(message: types.Message):
             except Exception as e:
                 print(f'[Instagram:video] | {e}')
             finally:
+                if message.chat.type == 'private':
+                    print('private')
+                    database.insert_data('users', data=(event_chat.id, username, fullname))
                 if 'video_filename' in locals():
                     os.remove(video_filename)
                     print("% s has been removed successfully" % video_filename)
+
                     
+@dp.message_handler(commands=['pray'])
+async def pray_handler(message: types.Message):
+    if message.chat.type == 'private':
+        markup = InlineKeyboardMarkup(resize_keyboard=True)
+        cities = ['Almaty', 'Astana', 'Shymkent', 'Karaganda', 'Atyrau', 'Aqtau', 'Oral', 'Aqsay']
+        markup.add(*[InlineKeyboardButton(city, callback_data=f'city_{city}') for city in cities])
+
+        await message.reply("Выберите город\nPlease select city:", reply_markup=markup)
+
+@dp.callback_query_handler(lambda c: c.data.startswith('city_'))
+async def pray_city_handler(callback: types.CallbackQuery):
+    city_name = callback.data.replace('city_', '')
+    db = Database('telegram-bot/yerzhanakh-py/database/prayer_times.db')
+
+    db.insert_data('prayer_users', data=(None, callback.message.chat.id, city_name))
+    await bot.edit_message_text(
+        f'Выбранный город: {city_name}\nSelected city: {city_name}\n\n/pray - чтобы поменять / to change',
+        callback.message.chat.id,
+        callback.message.message_id)
+
+
+@dp.inline_handler(lambda query: True)
+async def inline_echo(inline_query: InlineQuery):
+    db = Database('database/prayer_times.db')
+    city_name = db.get_data('prayer_users', 'city', inline_query.from_user.id, 'fetchone')
+    db.close()
+    if city_name is None:
+        await bot.answer_inline_query(inline_query.id, results=[
+            InlineQueryResultArticle(
+                id="no_city",
+                title="Initialize City",
+                input_message_content=InputTextMessageContent(
+                    "Go to @yerzhanakh_bot and send /pray, to initialize the city first",
+                    parse_mode='HTML'
+                ),
+                description="City not initialized",
+            )
+        ])
+        return
+
+    results = await get_prayer_timings(city_name)
+    await bot.answer_inline_query(inline_query.id, results=results, cache_time=1)
+
+async def get_prayer_timings(city_name):
+    prayer_timings = []
+    if not city_name:
+        return
+    timings = await prayer_check.fetch_prayer_times(city_name)
+
+    current_date = datetime.now(timezone.utc) + timedelta(hours=5)
+    formatted_date = current_date.strftime('%d-%m-%Y')
+
+    timings_text = f"<b>Prayer time for — {formatted_date} | {city_name}</b>\n\n"
+    for prayer, time in timings.items():
+        prayer_time = datetime.strptime(time, '%H:%M')
+        current_time = datetime.now(timezone.utc) + timedelta(hours=5)
+        formatted_current_time = datetime.strptime(current_time.strftime('%H:%M'), '%H:%M')
+
+        dif = prayer_time - formatted_current_time
+        dif_hours, dif_minutes = divmod(dif.seconds // 60, 60)
+
+        timings_text += f"<b>{prayer} · {time}</b>\n<i>Time left: {dif_hours} hours {dif_minutes} minutes</i>\n\n"
+
+    prayer_timings.append(
+        InlineQueryResultArticle(
+            id="prayer_timings",
+            title="Время молитв",
+            input_message_content=InputTextMessageContent(timings_text, parse_mode='HTML'),
+            description="Полный список времён молитв",
+        )
+    )
+
+    return prayer_timings
+                    
+                    
+async def main():
+    await init_prayer(bot)
+    await asyncio.Future()
 
 if __name__ == '__main__':
     logger.info(f"{ConsoleColors.OKGREEN}Starting bot{ConsoleColors.ENDC}")
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
     executor.start_polling(dp, skip_updates=True)

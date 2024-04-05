@@ -1,56 +1,74 @@
-# # import requests
-# # from bs4 import BeautifulSoup
-# # import sqlite3
+import yt_dlp
+import asyncio
+import aiohttp
+from typing import Optional
 
-# import sqlite3
 
-# # Connect to SQLite database
-# conn = sqlite3.connect('telegram-bot/yerzhanakh-py/database/routes.db')
-# cursor = conn.cursor()
+class SoundCloudDownloader:
+    def __init__(self, query: str):
+        self.query = query
 
-# # Remove tables with IDs from 1 to 23
+    async def search(self):
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True,
+        }
 
-# cursor.execute("DELETE FROM routes WHERE id = 109")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            search_query = f'scsearch:{self.query}'
+            info = ydl.extract_info(search_query, download=False)
+            
+            if 'entries' in info:
+                for entry in info['entries']:
+                    id = entry['id']
+                    title = entry['title']
+                    uploader = entry['uploader']
+                    url = entry['url']
+                    print(f"[Soundcloud] Downloading: {title}...")
+                    data = {
+                        'id': id,
+                        'title': title,
+                        'uploader': uploader,
+                        'url': url
+                    }
+                    return data
+                    
+            else:
+                print("No tracks found.")
+                return None
 
-# conn.commit()
-# conn.close()
+    async def async_download(self, id: Optional[int] = None, url: Optional[str] = None) -> None:
+        data = await self.search()
 
-# print("Tables with IDs removed successfully from routes.db.")
+        if data:
+            url = url if url is not None else data['url']
+            id = id if id is not None else data['id']
 
-# # # Fetch the webpage content
-# # url = 'https://mountain.kz/ru/climbing-routes-maps/?c=mountaineering-routes'
-# # response = requests.get(url)
-# # soup = BeautifulSoup(response.content, 'html.parser')
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as sound_resp:
+                    if sound_resp.status == 200:
+                        sound_filename = f"{id}.mp3"
+                        with open(sound_filename, 'wb') as f:
+                            f.write(await sound_resp.read())
+                        print(f"[Soundcloud] Downloaded: {sound_filename}")
+        else:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as sound_resp:
+                    if sound_resp.status == 200:
+                        sound_filename = f"{id}.mp3"
+                        with open(sound_filename, 'wb') as f:
+                            f.write(await sound_resp.read())
+                        print(f"[Soundcloud] Downloaded: {sound_filename}")
 
-# # # Find all <ul> tags
-# # ul_tags = soup.find_all('ul')
 
-# # # Extract required information from <ul> tags
-# # routes_info = []
-# # for ul in ul_tags:
-# #     li_tags = ul.find_all('li')
-# #     for li in li_tags:
-# #         a_tag = li.find('a')
-# #         if a_tag:
-# #             route_name = a_tag.text.strip()
-# #             route_link = a_tag['href']
-# #             routes_info.append((route_name, route_link))
+async def main():
+    downloader = SoundCloudDownloader("rallyhouse")
+    await downloader.async_download()
 
-# # # Create SQLite database and table
-# # conn = sqlite3.connect('routes.db')
-# # cursor = conn.cursor()
-
-# # cursor.execute('''CREATE TABLE IF NOT EXISTS routes
-# #                   (id INTEGER PRIMARY KEY AUTOINCREMENT,
-# #                    route_name TEXT,
-# #                    route_link TEXT)''')
-
-# # # Insert data into SQLite database
-# # for route in routes_info:
-# #     cursor.execute("INSERT INTO routes (route_name, route_link) VALUES (?, ?)", route)
-
-# # conn.commit()
-# # conn.close()
-
-# # print("Data inserted successfully into routes.db table.")
-
+if __name__ == "__main__":
+    asyncio.run(main())
