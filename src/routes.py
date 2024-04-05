@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 class Routes:
     def __init__(self) -> None:
-        self.conn = sqlite3.connect('telegram-bot/yerzhanakh-py/database/routes.db')
+        self.conn = sqlite3.connect('database/routes.db')
         self.cursor = self.conn.cursor()
 
     async def parse(self, route_name):
