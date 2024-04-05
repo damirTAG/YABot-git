@@ -1,21 +1,34 @@
 import sqlite3
-import json
 
-# Read user IDs from JSON file
-with open('user_ids.json', 'r') as f:
-    user_ids = json.load(f)
+def create_database():
+    conn = sqlite3.connect('telegram-bot/yerzhanakh-py/database/prayer_times.db')
+    cursor = conn.cursor()
 
-# Connect to SQLite database (it will be created if it doesn't exist)
-conn = sqlite3.connect('telegram-bot/yerzhanakh-py/database/users.db')
-cursor = conn.cursor()
+    # Create prayer_users table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS prayer_users (
+                        id INTEGER PRIMARY KEY,
+                        user_id INTEGER UNIQUE,
+                        city TEXT
+                    )''')
+    
+    conn.commit()
+    conn.close()
 
-# Create table if it doesn't exist
-cursor.execute('''CREATE TABLE IF NOT EXISTS users
-                  (id INTEGER PRIMARY KEY, user_id INTEGER UNIQUE, username TEXT, fullname TEXT)''')
+def insert_user_data(user_ids, city):
+    conn = sqlite3.connect('telegram-bot/yerzhanakh-py/database/prayer_times.db')
+    cursor = conn.cursor()
 
-# Insert user IDs into the database
-for user_id in user_ids:
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+    for user_id in user_ids:
+        cursor.execute("INSERT OR IGNORE INTO prayer_users (user_id, city) VALUES (?, ?)", (user_id, city))
 
-conn.commit()
-conn.close()
+    conn.commit()
+    conn.close()
+
+if __name__ == '__main__':
+    create_database()
+
+    user_ids = [1038468423, 419481001, 688911314]
+    city = 'Almaty'
+    insert_user_data(user_ids, city)
+
+    print(f"Data inserted successfully for users: {user_ids} with city: {city}")
