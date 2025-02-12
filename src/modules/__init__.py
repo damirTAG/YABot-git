@@ -19,7 +19,7 @@ from ymtool import (
 __all__ = [
     'Converter',
     'TikTok',
-    'metadata'
+    'metadata',
     'Tools',
     'SoundCloudDownloader',
     'SoundCloudSearchException',
