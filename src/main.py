@@ -14,25 +14,29 @@ import aiohttp
 import shutil
 import logging
 import traceback
-from PIL import Image
-from io import BytesIO
 
 
-from tools import Tools, ConsoleColors, Platforms, SoundCloudDownloader
-from TikTok import TikTok, metadata
-from convert import Converter
+from modules import (
+    Tools, 
+    ConsoleColors, 
+    Platforms, 
+    SoundCloudDownloader, 
+    TikTok, 
+    metadata,
+    Converter
+)
 from exceptions import SoundCloudSearchException
 
 
-from mutagen.id3 import ID3, TIT2, TPE1, APIC
+from mutagen.id3 import ID3, TIT2, TPE1
 from random import randrange
 from tinytag import TinyTag
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from urllib.parse import urlparse, unquote
 from tqdm.asyncio import tqdm
+
+
 from aiogram.utils.exceptions import ChatNotFound
-
-
 from aiogram.dispatcher import FSMContext
 from aiogram.utils.exceptions import Unauthorized, BotBlocked, ChatNotFound
 from aiogram.dispatcher.filters import Text
@@ -176,7 +180,7 @@ async def rate(message: types.Message):
     roll = f'🎱 <b>{nick}</b> роллит! [1-100]. Выпадает: <b>{random}</b>!'
     return await bot.send_message(chat_id=chat_id, reply_to_message_id=message.message_id, text=roll)
 
-from ymtool import YandexMusicSDK, TrackData
+from modules.ymtool import YandexMusicSDK, TrackData
 import uuid
 
 ya_track_data: dict = {}

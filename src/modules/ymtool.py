@@ -1,5 +1,6 @@
 """
     Simple tool to interact with unofficial YandexMusic API by MarshalX.
+    https://github.com/MarshalX/yandex-music-api
     
     Can get, search, download tracks and prepare metadata 
     for easy use in your projects
@@ -34,12 +35,12 @@ from yandex_music.exceptions import NotFoundError, YandexMusicError
 
 # SETTINGS BEGIN
 
-# get your YandexMusic Token (Optional: needs for downloading tracks)
+# get your YandexMusic Token (Optional)
 # https://yandex-music.readthedocs.io/en/main/token.html
 # im using config file to store tokens
 try:
     import config
-    TOKEN = config.ya_token
+    TOKEN = config.YANDEX_MUSIC_TOKEN
 except (ImportError, NameError):
     TOKEN: str = None # IF NO CONFIG FILE, JUST PASS YOUR TOKEN HERE
 
@@ -198,7 +199,11 @@ class YandexMusicSDK:
         metadata: TrackData
     ):
         """
-        Track metadata inserting
+        Note:
+            **Inserts metadata only for already downloaded track**
+
+        Args:
+            metadata: `TrackData` obj 
         """
         filename = self._prepare_filename(metadata.id)
         if filename and os.path.exists(filename):
@@ -228,7 +233,10 @@ class YandexMusicSDK:
             except Exception as e:
                 self.logger.error(f"Error updating metadata: {str(e)}")
         else:
-            self.logger.warning('Sorry, the metadata inserting not available to custom file paths')
+            self.logger.warning(
+                'Sorry, the metadata inserting failed, ' 
+                'seems like the track not downloaded'
+            )
 
     @staticmethod    
     def _prepare_filename(id: int):
@@ -304,7 +312,7 @@ class YandexMusicSDK:
                 lyrics_text = None
                 if lyrics:
                     try:
-                        lyrics_data: TrackLyrics = await track.get_lyrics('TEXT')
+                        lyrics_data: TrackLyrics = await track.get_lyrics_async('TEXT')
                         lyrics_text = await lyrics_data.fetch_lyrics_async()
                     except NotFoundError:
                         self.logger.error('Failed to get lyrics')
@@ -372,7 +380,7 @@ class YandexMusicSDK:
             lyrics_text = None
             if lyrics:
                 try:
-                    lyrics_data: TrackLyrics = await track.get_lyrics('TEXT')
+                    lyrics_data: TrackLyrics = await track.get_lyrics_async('TEXT')
                     lyrics_text = await lyrics_data.fetch_lyrics_async()
                 except NotFoundError:
                     self.logger.error('Failed to get lyrics')
@@ -403,7 +411,7 @@ class YandexMusicSDK:
             self.logger.error(f"Ошибка: {e}")
             return None
         
-    async def get_currently_track(self, lyrics: bool = False):
+    async def get_currently_track(self, device: str, lyrics: bool = False):
         """
         Gets сurrent playing track
         
@@ -417,20 +425,23 @@ class YandexMusicSDK:
         Returns:
             `TrackData` Object of currently listening track, otherwise `None`
         """
-        queues = await self.client.queues_list()
+        if not self.is_init:
+            await self.client.init()
+            self.is_init = True
+        queues = await self.client.queues_list(device)
         if not queues:
-            self.logger.error('Queue is empty')
+            self.logger.error('Queue is empty, check device name')
             return None
         
         last_queue: Queue = await self.client.queue(queues[0].id)
         last_track_id = last_queue.get_current_track()
-        last_track: Track = await last_track_id.fetch_track()
+        last_track: Track = await last_track_id.fetch_track_async()
         album = last_track.albums[0] if last_track.albums else None
         lyrics_text = None
 
         if lyrics:
             try:
-                lyrics_data: TrackLyrics = await last_track.get_lyrics('TEXT')
+                lyrics_data: TrackLyrics = await last_track.get_lyrics_async('TEXT')
                 lyrics_text = await lyrics_data.fetch_lyrics_async()
             except NotFoundError:
                 self.logger.error('Failed to get lyrics')
@@ -470,6 +481,9 @@ class YandexMusicSDK:
         Returns:
             `ChartData` object containing chart information
         """
+        if not self.is_init:
+            await self.client.init()
+            self.is_init = True
         self.logger.info(f"[yandex_music: chart] Fetching chart for {chart_country.capitalize()}")
         
         # Get chart data from client
@@ -535,22 +549,22 @@ class YandexMusicSDK:
         return chart_data
 
 async def main():    
-    async with YandexMusicSDK(language='en') as ymsdk:
-        cur = await ymsdk.get_currently_track()
-        if cur:
-            print(cur)
-        # await ymsdk.get_chart('kazakhstan', True, 10)
-        # r: list[TrackData] = await ymsdk.search("sara perche ti amo", download=False)
-        # if r:
-        #     print(r[0].album_title)
-        # else:
-        #     print("No results found.")
-        l = await ymsdk.get_track('https://music.yandex.com/album/23913103/track/108422114', download=True)
-        ymsdk.insert_metadata(l)
-        print(l)
-        # by_id = await ymsdk.get_track(133340109, download=True)
+    async with YandexMusicSDK() as ymsdk:
+        await ymsdk.get_chart('kazakhstan', download=True, count=20)
+        result: list[TrackData] = await ymsdk.search("sara perche ti amo", download=False)
+        if result:
+            print(result[0].album_title)
+        else:
+            print("No results found.")
+        track = await ymsdk.get_track(
+            'https://music.yandex.com/album/23913103/track/108422114', 
+            download=False
+        )
+        ymsdk.insert_metadata(track)
+        print(track)
+        by_id = await ymsdk.get_track(133340109, download=True)
 
-try:
-    asyncio.run(main())
-except (KeyboardInterrupt, SystemExit):
-    print('sayonara')
+# try:
+#     asyncio.run(main())
+# except (KeyboardInterrupt, SystemExit):
+#     print('sayonara')
