@@ -23,7 +23,6 @@ help_txt = """
 
 <b>Commands:</b>
 <code>[/roll]</code> — roll number between 1 and 100 (like in dota)
-<code>[/routes]</code> — shows almaty alpine routes (Height: 4k, in future there will be lite routes(2k-3k))
 
 <b>Features:</b>
 🎤 <i>Voice recognizer</i> (works in groups), recognizes voice and sends text of recognized audio.

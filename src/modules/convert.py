@@ -4,7 +4,6 @@ import os
 
 
 class Converter:
-
     def __init__(self, path_to_file: str, language: str = "ru-RU"):
         self.language = language
         subprocess.run(['ffmpeg', '-v', 'quiet', '-i',

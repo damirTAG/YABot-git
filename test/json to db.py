@@ -1,34 +1,30 @@
-import sqlite3
+import aiohttp
+import asyncio
 
-def create_database():
-    conn = sqlite3.connect('telegram-bot/yerzhanakh-py/database/prayer_times.db')
-    cursor = conn.cursor()
+async def download_image(url, filename="image.jpg"):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                with open(filename, "wb") as f:
+                    f.write(await response.read())
+                print(f"Image saved as {filename}")
+            else:
+                print(f"Failed to download image: {response.status}")
 
-    # Create prayer_users table
-    cursor.execute('''CREATE TABLE IF NOT EXISTS prayer_users (
-                        id INTEGER PRIMARY KEY,
-                        user_id INTEGER UNIQUE,
-                        city TEXT
-                    )''')
-    
-    conn.commit()
-    conn.close()
+async def main():
+    urls: list = [
+        "https://ddinstagram.com/images/DF79UMgt7cU/1",
+        "https://ddinstagram.com/images/DF79UMgt7cU/2",
+        "https://ddinstagram.com/images/DF79UMgt7cU/3",
+        "https://ddinstagram.com/images/DF79UMgt7cU/4",
+        "https://ddinstagram.com/images/DF79UMgt7cU/5",
+        "https://ddinstagram.com/images/DF79UMgt7cU/6",
+        "https://ddinstagram.com/images/DF79UMgt7cU/7",
+        "https://ddinstagram.com/images/DF79UMgt7cU/8",
+        "https://ddinstagram.com/images/DF79UMgt7cU/9",
 
-def insert_user_data(user_ids, city):
-    conn = sqlite3.connect('telegram-bot/yerzhanakh-py/database/prayer_times.db')
-    cursor = conn.cursor()
+        ]  # Original URLs
+    for i, url in enumerate(urls):
+        await download_image(url, filename=f'ig_Img_{i}.jpg')
 
-    for user_id in user_ids:
-        cursor.execute("INSERT OR IGNORE INTO prayer_users (user_id, city) VALUES (?, ?)", (user_id, city))
-
-    conn.commit()
-    conn.close()
-
-if __name__ == '__main__':
-    create_database()
-
-    user_ids = [1038468423, 419481001, 688911314]
-    city = 'Almaty'
-    insert_user_data(user_ids, city)
-
-    print(f"Data inserted successfully for users: {user_ids} with city: {city}")
+asyncio.run(main())

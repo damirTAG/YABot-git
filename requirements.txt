@@ -1,4 +1,4 @@
-aiogram
+aiogram==2.25.1
 aiohttp
 aiosignal
 aiofiles
@@ -22,3 +22,5 @@ SpeechRecognition
 tinytag
 tqdm
 bs4
+ffmpeg-python
+yandex_music
