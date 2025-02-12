@@ -8,7 +8,7 @@ from typing import Optional
 class SoundCloudSearchException(Exception):
     pass
 
-class Tools:
+class Tools():
     def __init__(self) -> None:
         """
         HEADERS NOT WORKING, SO NOT USING NEED TO CHANGE
