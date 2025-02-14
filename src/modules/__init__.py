@@ -1,28 +1,27 @@
-from convert import Converter
+from .convert import Converter
 
-from TikTok import TikTok, metadata
+from .tiktok import TikTok, metadata
 
-from tools import (
-    Tools, 
-    SoundCloudDownloader, 
-    SoundCloudSearchException,
+from .tools import (
+    Tools,
     Platforms,
     ConsoleColors
 )
 
-from ymtool import (
+from .ymtool import (
     YandexMusicSDK, 
     TrackData, 
     ChartData
 )
+
+from .soundcloud import SoundCloudTool
 
 __all__ = [
     'Converter',
     'TikTok',
     'metadata',
     'Tools',
-    'SoundCloudDownloader',
-    'SoundCloudSearchException',
+    'SoundCloudTool',
     'Platforms',
     'ConsoleColors',
     'YandexMusicSDK',

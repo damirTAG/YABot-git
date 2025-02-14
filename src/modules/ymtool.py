@@ -35,19 +35,21 @@ from yandex_music.exceptions import NotFoundError, YandexMusicError
 
 # SETTINGS BEGIN
 
-# get your YandexMusic Token (Optional)
+# get your YandexMusic Token:
 # https://yandex-music.readthedocs.io/en/main/token.html
 # im using config file to store tokens
 try:
     import config
     TOKEN = config.YANDEX_MUSIC_TOKEN
-except (ImportError, NameError):
+except (ImportError, NameError) as e:
+    print(e)
     TOKEN: str = None # IF NO CONFIG FILE, JUST PASS YOUR TOKEN HERE
 
 from pathlib import Path
 path = Path()
 
-YANDEX_MUSIC_PATTERN = r"https://music\.yandex\.(?:ru|com|kz)/album/\d+/track/\d+"
+TRACK_PATTERN = r"https://music\.yandex\.(?:ru|com|kz)/album/\d+/track/\d+"
+ALBUM_PATTERN = r"https://music\.yandex\.(?:ru|com|kz)/album/\d+"
 HOME_DIR = path.absolute()
 CODEC = "mp3"
 BITRATE = 320
@@ -99,12 +101,25 @@ class ChartData:
     title: str
     description: str
     country: str
-    tracks: typing.List[TrackData]
+    tracks: typing.List['TrackData']
     update_time: datetime
     
     def __str__(self) -> str:
         return f"Chart: {self.title} ({self.country})\nTracks: {len(self.tracks)}"
 
+@dataclass
+class AlbumData:
+    id: int                             = None
+    title: str                          = None
+    genre: str                          = None
+    year: int                           = None
+    release_date: str                   = None
+    tracks: typing.List['TrackData']    = None
+    track_count: int                    = None
+    cover: str                          = None
+    desc: str                           = None
+    is_premiere: bool                   = None
+    likes_count: int                    = None
 
 class YandexMusicSDK:
     def __init__(
@@ -115,6 +130,7 @@ class YandexMusicSDK:
         self.client = ClientAsync(token=TOKEN, **kwargs)
         self.is_init = False
         self.logger = self._setup_logger()
+        print(TOKEN)
     
     async def __aenter__(self):
         await self.client.init()
@@ -137,6 +153,17 @@ class YandexMusicSDK:
     @staticmethod
     def _convert_to_seconds(milliseconds: int) -> float:
         return round(milliseconds / 1000, 2)
+    
+    @staticmethod
+    def _extract_album_id(url: str) -> typing.Optional[int]:
+        if not re.match(ALBUM_PATTERN, url):
+            return None
+        
+        try:
+            album_id = int(url.split('/')[-1])
+            return album_id
+        except (ValueError, IndexError):
+            return None
 
     async def _request(
         self,
@@ -165,7 +192,7 @@ class YandexMusicSDK:
         chart: typing.Optional[Chart] = None,
         lyrics_text: typing.Optional[str] = None,
         download_info: list[DownloadInfo] = None
-    ) -> TrackData:        
+    ) -> typing.Union[TrackData]:        
         return TrackData(
             id=track.id,
             album_id=album.id,
@@ -238,12 +265,61 @@ class YandexMusicSDK:
                 'seems like the track not downloaded'
             )
 
+    def _prepare_album_metadata(
+        self,
+        album: Album,
+        tracks: typing.List[TrackData] = None
+    ) -> typing.Union[AlbumData]:
+        """
+        Prepare album metadata from Album object and optional list of track data.
+        
+        Args:
+            album: Album object containing raw album information
+            tracks: Optional list of prepared TrackData objects
+            
+        Returns:
+            AlbumData object with formatted album metadata
+        """
+        return AlbumData(
+            id=album.id,
+            title=album.title,
+            genre=album.genre if album.genre is not None else None,
+            year=album.year if album.year is not None else None,
+            release_date=album.release_date if hasattr(album, 'release_date') else None,
+            tracks=tracks,
+            track_count=len(tracks) if tracks is not None else album.track_count,
+            cover=album.get_cover_url('1000x1000') if hasattr(album, 'get_cover_url') else None,
+            desc=album.description if hasattr(album, 'description') else None,
+            is_premiere=album.is_premiere if hasattr(album, 'is_premiere') else None,
+            likes_count=album.likes_count if hasattr(album, 'likes_count') else None
+        )
+
     @staticmethod    
     def _prepare_filename(id: int):
         return (
             f'track_{id}.{CODEC}'
             if id else None
         )
+
+    async def _extract_track_id(self, track: typing.Union[str, int]) -> typing.Optional[str]:
+        """Extract track ID from URL or input string/integer"""
+        if isinstance(track, str):
+            if re.match(TRACK_PATTERN, track):
+                return track.split('/')[-1]
+            elif track.isdigit():
+                return track
+        elif isinstance(track, int):
+            return str(track)
+        return None
+
+    async def _get_lyrics(self, track: Track) -> typing.Optional[str]:
+        "Helper function to get lyrics"""
+        try:
+            lyrics_data: TrackLyrics = await track.get_lyrics_async('TEXT')
+            return await lyrics_data.fetch_lyrics_async()
+        except NotFoundError:
+            self.logger.error('Failed to get lyrics')
+            return None
 
     async def _download(
             self, 
@@ -261,9 +337,8 @@ class YandexMusicSDK:
         ]
         
         if not suitable_links:
-            self.logger.error("No direct links found!")
-            return None
-
+            self.logger.error("No direct links found, trying with lower bitrate")
+            return
         download_url = suitable_links[0]['direct_link']
 
         download_path = filename
@@ -284,131 +359,148 @@ class YandexMusicSDK:
                         return None
         self.logger.info('Track already exists, skipping download')
         return download_path 
-    
+        
     async def search(
-        self, 
-        query: str,  # Search query
+        self,
+        query: str,
+        type: str = 'track',
         count: int = 7,
         download: bool = True,
         lyrics: bool = False,
         upload_dir: typing.Optional[str] = None
     ) -> list[TrackData]:
+        """
+        Optimized search function using parallel processing.
+        """
         if not self.is_init:
             await self.client.init()
             self.is_init = True
 
         try:
-            r: Search = await self.client.search(query, type_="track")
+            r: Search = await self.client.search(query, type_=type)
             if not r or not r.tracks or not r.tracks.results:
                 raise NotFoundError("[yandex_music: search] Track not found")
 
-            tracks = r.tracks.results[:count] # get tracks
-            results = []
-
-            for track in tracks:
+            tracks = r.tracks.results[:count]
+            
+            async def process_track(track: Track):
+                """Process a single track with all its metadata"""
                 self.logger.info(f'Found track: {track.title} | {self._convert_to_seconds(track.duration_ms)} sec')
-
+                
                 album = track.albums[0] if track.albums else None
-                lyrics_text = None
+                
+                # Parallel fetch of lyrics and download info
+                lyrics_task = None
                 if lyrics:
-                    try:
-                        lyrics_data: TrackLyrics = await track.get_lyrics_async('TEXT')
-                        lyrics_text = await lyrics_data.fetch_lyrics_async()
-                    except NotFoundError:
-                        self.logger.error('Failed to get lyrics')
-
-                dwnld_info = await track.get_download_info_async(get_direct_links=True)
+                    lyrics_task = asyncio.create_task(self._get_lyrics(track))
+                
+                download_task = asyncio.create_task(
+                    track.get_specific_download_info_async(
+                        codec=CODEC,
+                        bitrate_in_kbps=BITRATE
+                    )
+                )
+                
+                # Wait for both tasks to complete
+                results = await asyncio.gather(
+                    download_task,
+                    lyrics_task if lyrics_task else asyncio.sleep(0),
+                    return_exceptions=True
+                )
+                
+                download_info, lyrics_text = results[0], results[1] if lyrics_task else None
+                print(download_info)
+                if isinstance(download_info, Exception):
+                    self.logger.error(f'Failed to get download info: {download_info}')
+                    return None
+                
+                # Prepare metadata
                 metadata = self._prepare_metadata(
-                    track, 
-                    album, 
-                    lyrics_text=lyrics_text,
-                    download_info=dwnld_info
+                    track,
+                    album,
+                    lyrics_text=None if isinstance(lyrics_text, Exception) else lyrics_text,
+                    download_info=download_info
                 )
+                
+                # Download if needed
+                if download:
+                    await self._download(
+                        download_info,
+                        self._prepare_filename(track.id),
+                        upload_dir
+                    )
+                
+                return metadata
 
-                if not download:
-                    results.append(metadata)
-                    continue
+            # Process all tracks in parallel
+            tasks = [process_track(track) for track in tracks]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Filter out None results and exceptions
+            return [r for r in results if r is not None and not isinstance(r, Exception)]
 
-                # download if need
-                await self._download(
-                    dwnld_info, 
-                    self._prepare_filename(track.id), 
-                    upload_dir if upload_dir else None
-                )
-
-                results.append(metadata)
-
-            return results
         except Exception as e:
-            self.logger.error(f"[yandex_music: search] Error: {e}")
+            self.logger.error(f"Error: {e}")
             return []
-        
+
     async def get_track(
         self,
-        t: typing.Union[str, int], # Track URL/ID
+        track: typing.Union[str, int],  # Track URL/ID
         download: bool = False,
         lyrics: bool = False,
         upload_dir: typing.Optional[str] = None
-    ):
+    ) -> typing.Optional[TrackData]:
+        """
+        Get track data from either track URL or ID with optimized parallel processing.
+        """
         if not self.is_init:
             await self.client.init()
             self.is_init = True
 
         try:
-            track_id = None
-            if isinstance(t, str):
-                if re.match(YANDEX_MUSIC_PATTERN, t):
-                    # Extract track ID from URL
-                    track_id = t.split('/')[-1]
-                elif t.isdigit():
-                    track_id = t
-            elif isinstance(t, int):
-                track_id = str(t)
-            self.logger.info(track_id)
+            # Extract track ID
+            track_id = await self._extract_track_id(track)
+            print(track_id)
             if not track_id:
                 raise ValueError("Incorrect Track ID or Track URL!")
 
-            # Get track by ID
+            # Fetch track data
             track = await self.client.tracks(track_id)
             if not track or not track[0]:
                 raise YandexMusicError("Failed to get track")
 
-            track = track[0]  # API returns list of tracks
+            track: Track = track[0]  # API returns list of tracks
             self.logger.info(f'Fetched track: {track.title} | {self._convert_to_seconds(track.duration_ms)} sec')
+            
+            # Get album info
             album = track.albums[0] if track.albums else None
-
+            
+            # Get lyrics if requested
             lyrics_text = None
             if lyrics:
-                try:
-                    lyrics_data: TrackLyrics = await track.get_lyrics_async('TEXT')
-                    lyrics_text = await lyrics_data.fetch_lyrics_async()
-                except NotFoundError:
-                    self.logger.error('Failed to get lyrics')
-
-            dwnld_info = await track.get_download_info_async(get_direct_links=True)
-            if not download:
-                return self._prepare_metadata(
-                    track, 
-                    album, 
-                    lyrics_text=lyrics_text, 
-                    download_info=dwnld_info
+                lyrics_text = await self._get_lyrics(track)
+            
+            # Get download info - без параллельной обработки
+            download_info = await track.get_download_info_async(get_direct_links=True)
+            
+            # Download if requested
+            if download:
+                await self._download(
+                    download_info,
+                    self._prepare_filename(track_id),
+                    upload_dir
                 )
 
-            # Download if requested
-            await self._download(
-                dwnld_info, 
-                self._prepare_filename(track_id), 
-                upload_dir if upload_dir else None
+            # Prepare and return metadata
+            return self._prepare_metadata(
+                track,
+                album,
+                lyrics_text=lyrics_text,
+                download_info=download_info
             )
 
-            return self._prepare_metadata(
-                track, 
-                album, 
-                lyrics_text=lyrics_text, 
-                download_info=dwnld_info
-            )
         except Exception as e:
-            self.logger.error(f"Ошибка: {e}")
+            self.logger.error(f"Error: {e}")
             return None
         
     async def get_currently_track(self, device: str, lyrics: bool = False):
@@ -459,6 +551,50 @@ class YandexMusicSDK:
             lyrics_text=lyrics_text
         )
 
+    async def get_album(
+        self,
+        album: typing.Union[str, int], # Album URL/ID
+    ) -> AlbumData:
+        """
+        Get album data from its link or id
+
+        Args:
+            Album (:obj:`str` | :obj:`int`): link | id
+
+        Returns:
+            AlbumData (:obj: `AlbumData`)
+        """
+        if not self.is_init:
+            await self.client.init()
+            self.is_init = True
+        if isinstance(album, str):
+            if re.match(ALBUM_PATTERN, album):
+                album_id = self._extract_album_id(album)
+                if album_id is None:
+                    raise ValueError("Could not extract album ID from URL")
+            else:
+                try:
+                    album_id = int(album)
+                except ValueError:
+                    raise ValueError("Invalid album ID format")
+        else:
+            album_id = album
+        
+        album_info = await self.client.albums_with_tracks(album_id)
+
+        tracks_data = None
+        if album_info.volumes:
+            all_tracks = [track for volume in album_info.volumes for track in volume]
+            tracks_data = [
+                self._prepare_metadata(
+                    track, 
+                    album_info, 
+                    download_info=await track.get_download_info_async(True)
+                )
+                for track in all_tracks
+            ]
+
+        return self._prepare_album_metadata(album_info, tracks_data)
 
     async def get_chart(
         self,
@@ -550,19 +686,21 @@ class YandexMusicSDK:
 
 async def main():    
     async with YandexMusicSDK() as ymsdk:
-        await ymsdk.get_chart('kazakhstan', download=True, count=20)
-        result: list[TrackData] = await ymsdk.search("sara perche ti amo", download=False)
-        if result:
-            print(result[0].album_title)
-        else:
-            print("No results found.")
+        import time
+        # first_s = time.time()
+        # result = await ymsdk.search('xxxmanera', download=False, lyrics=True)
+        # first_end = time.time()
+        # print(f"search() execution time: {first_end - first_s:.6f} sec")
+        # print(result[0].download_info)
+        first_s = time.time()
         track = await ymsdk.get_track(
-            'https://music.yandex.com/album/23913103/track/108422114', 
-            download=False
+            'https://music.yandex.kz/album/31926326/track/127718866', 
+            download=False, 
+            lyrics=False
         )
-        ymsdk.insert_metadata(track)
-        print(track)
-        by_id = await ymsdk.get_track(133340109, download=True)
+        first_end = time.time()
+        print(f"get_track() execution time: {first_end - first_s:.6f} sec")
+        print(track.download_info)
 
 # try:
 #     asyncio.run(main())
