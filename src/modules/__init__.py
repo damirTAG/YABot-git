@@ -4,7 +4,7 @@ from .tiktok import TikTok, metadata
 
 from .tools import (
     Tools,
-    Platforms,
+    init_db,
     ConsoleColors
 )
 
@@ -22,7 +22,7 @@ __all__ = [
     'metadata',
     'Tools',
     'SoundCloudTool',
-    'Platforms',
+    'init_db',
     'ConsoleColors',
     'YandexMusicSDK',
     'TrackData',
