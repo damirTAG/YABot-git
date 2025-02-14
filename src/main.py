@@ -2,7 +2,13 @@
 from config import TOKEN
 
 # TEXT FILES IMPORT BEGIN
-from allText import start_txt, text_txt, error_txt, help_txt, update_txt
+from allText import (
+    YANDEX_MUSIC_TRACK_CAPTION,
+    start_txt, 
+    error_txt, 
+    help_txt, 
+    update_txt
+)
 # TEXT FILES IMPORT END
 
 import pytz
@@ -10,40 +16,35 @@ import yt_dlp as ytd
 import os, re, uuid
 import sqlite3
 import json
-import aiohttp
+import aiohttp, asyncio
 import shutil
 import logging
 import traceback
 
-
 from modules import (
-    Tools, 
+    Tools,
+    init_db,
     ConsoleColors,
     SoundCloudTool,
-    Platforms,
     TikTok, 
     metadata,
     Converter
 )
-from exceptions import SoundCloudSearchException
 
-
-from mutagen.id3 import ID3, TIT2, TPE1
 from random import randrange
-from tinytag import TinyTag
 from datetime import datetime
 from urllib.parse import urlparse, unquote
 from tqdm.asyncio import tqdm
 
-
-from aiogram.utils.exceptions import ChatNotFound
-from aiogram.dispatcher import FSMContext
-from aiogram.utils.exceptions import Unauthorized, BotBlocked, ChatNotFound
-from aiogram.dispatcher.filters import Text
 from aiogram import Dispatcher, Bot, executor, types
-from aiogram import asyncio
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatActions, InputMediaPhoto, InputMediaVideo, ChatType, InlineQuery, InputTextMessageContent, InlineQueryResultArticle
+from aiogram.types import (
+    InlineKeyboardButton, 
+    InlineKeyboardMarkup, 
+    ChatActions, 
+    InputMediaPhoto, 
+    InputMediaVideo
+)
 # =========
 storage = MemoryStorage()
 semaphore = asyncio.Semaphore(20)
@@ -70,6 +71,11 @@ cursor.execute('''
         video_link TEXT
     )
 ''')
+
+stats_db = init_db()
+if stats_db:
+    print('admin db initialized!')
+
 #LOGER
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,74 +88,21 @@ logger.addHandler(handler)
 DAMIR_USER_ID = 1038468423
 GITHUB_REPO = 'None'
 CACHE_CHAT = -1001911592881
-pl = Platforms()
 ignore_ids = [-1001559555304, -1001919227306, -1001987624296, -1002050266275]   # -1001559555304, -1001919227306, -1001987624296
-
-# ERRORS
-async def on_unauthorized_error(update: types.Update, exception: Exception):
-    if isinstance(exception, BotBlocked):
-        logger.info(f'User has blocked the bot, skipping')
-
 # =========
 # INIT FINISH
 
-async def get_user_info(user_id):
-    try:
-        user = await bot.get_chat(user_id)
-        username = user.username
-        fullname = user.full_name
-        return username, fullname
-    except ChatNotFound:
-        logger.info('chat not found skipping...')
-        return None, None
-
 @dp.message_handler(commands='start')
+@tools.log('start')
 async def hello(message: types.Message):
     await message.reply(text=start_txt)
 
-
-
-def get_last_active_users():
-    query = """
-    SELECT user_id, MAX(timestamp) 
-    FROM user_activity 
-    """
-    cursor.execute(query)
-    return cursor.fetchall()
-
-
-def get_my_chats():
-    query = """
-    SELECT chat_id, chat_name
-    FROM chats 
-    """
-    cursor.execute(query)
-    return cursor.fetchall()
 
 almaty_tz = pytz.timezone('Etc/GMT-5')
 
 @dp.callback_query_handler(text="close")
 async def close(call: types.CallbackQuery):
     await bot.delete_message(call.message.chat.id, call.message.message_id)
-
-@dp.message_handler(commands=['admin'])
-async def send_data(message: types.Message):
-    if message.from_user.id == 1038468423:
-        active_users = get_last_active_users()
-        chats = get_my_chats()
-        
-        response = "Chat data:\n"
-        
-        for chat_id, chat_name in chats:
-            response += f"Chat ID: {chat_id}, Name: {chat_name}\n"
-        
-        response += "\nLast Active Users not in any chats:\n"
-        
-        for user_id, timestamp in active_users:
-            timestamp = datetime.fromisoformat(timestamp).replace(tzinfo=pytz.utc).astimezone(almaty_tz)
-            response += f"User ID: {user_id}, Last Active: {timestamp}\n"
-        
-        await message.reply(response)
 
 @dp.message_handler(commands=['sendall'])
 async def send_all(message: types.Message):
@@ -167,6 +120,7 @@ async def send_all(message: types.Message):
 
 
 @dp.message_handler(commands='help', commands_prefix='!/')
+@tools.log('help')
 async def help(message: types.Message):
     help = help_txt
     keyboard = InlineKeyboardMarkup()
@@ -177,6 +131,7 @@ async def help(message: types.Message):
 
 # roll
 @dp.message_handler(commands=['roll', 'ролл'], commands_prefix='!/.')
+@tools.log('roll')
 async def rate(message: types.Message):
     nick = message.from_user.first_name
     chat_id = message.chat.id
@@ -190,6 +145,7 @@ ya_track_data: dict = {}
 YANDEX_MUSIC_PATTERN = r"https://music\.yandex\.(?:ru|com|kz)/album/\d+/track/\d+"
 
 @dp.message_handler(commands=['ym'])
+@tools.log('YM_TRACK_SEARCH')
 async def ym_command_handler(message: types.Message):
     args: str = message.get_args()
     if not args:
@@ -222,6 +178,7 @@ async def ym_command_handler(message: types.Message):
         await message.reply(f'<b>{args.capitalize()}</b>', reply_markup=keyboard)
 
 @dp.message_handler(regexp=YANDEX_MUSIC_PATTERN)
+@tools.log('YM_TRACK_LINKS')
 async def yandex_music_link_handler(m: types.Message):
     match = re.search(YANDEX_MUSIC_PATTERN, m.text)
     if match:
@@ -241,13 +198,7 @@ async def yandex_music_link_handler(m: types.Message):
             InlineKeyboardButton("❌ Close", callback_data='close')
         )
         
-        caption = f"""
-<b>🎵 Track:</b> <a href='https://music.yandex.com/album/{track.album_id}/track/{track.id}'>{track.title}</a> • {track.year}
-<b>👥 Artists:</b> <i>{track.artists}</i>
-<b>📀 Album:</b> <a href='https://music.yandex.com/album/{track.album_id}'>{track.album_title}</a>
-<b>🎶 Genre:</b> <i>{track.genre.capitalize()}</i>
-<b>⏱️ Duration:</b> <code>{int(track.duration // 60)}:{int(track.duration % 60):02d}</code>
-"""
+        caption = YANDEX_MUSIC_TRACK_CAPTION(track).format()
         await bot.send_photo(
             m.chat.id,
             track.cover,
@@ -255,11 +206,9 @@ async def yandex_music_link_handler(m: types.Message):
             reply_to_message_id=m.message_id,
             reply_markup=keyboard
         )
-        # ya_track_data["msg_id"] = msg.message_id
 
 @dp.callback_query_handler(lambda c: c.data.startswith("yandex_"))
 async def download_yandex_track(callback_query: types.CallbackQuery):
-    # await callback_query.answer()
     track_uuid = callback_query.data[len("yandex_"):]  # get UUID
     file_path = None
 
@@ -354,6 +303,7 @@ async def download_yandex_track(callback_query: types.CallbackQuery):
 
 
 @dp.message_handler(content_types=['voice', 'video_note'])
+@tools.log('SPEECH_REC')
 async def get_audio_messages(message: types.Message):
     try:
         await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
@@ -377,101 +327,14 @@ async def get_audio_messages(message: types.Message):
     except:
         return False
 
-# video download
 
-
-@dp.callback_query_handler(text='download_mp4')
-async def inline_keyboard_mp4(call: types.CallbackQuery):
-    logger.info("downloading mp4 format")
-    loading = "<i>Жүктеу | Loading</i>"
-    await call.message.edit_text(text=loading)
-    chat_id = call.message.chat.id
-    # database = Database('database/users.db')
-
-    cursor.execute(
-                'SELECT chat_id, message_id FROM video_cache WHERE video_link = ?', (link,))
-    cache_result = cursor.fetchone()
-    if cache_result:
-            from_chat_id, from_message_id = cache_result
-            await bot.copy_message(chat_id, from_chat_id, from_message_id, reply_to_message_id=message_id)
-            await bot.delete_message(call.message.chat.id, call.message.message_id)
-    else:
-        options = {
-            'skip-download': True,
-            'noplaylist': True,
-            'format': 'mp4',
-        }
-
-        with ytd.YoutubeDL(options) as ytdl:
-            result = ytdl.extract_info("{}".format(link), download=False)
-            duration = result['duration']
-            try:
-                if duration and duration <= 360:
-                    url = result['url']
-                    video_id = result['id']
-
-                    # Metadata
-                    # title = ytdl.prepare_filename(result)
-                    video_title = result.get('title', None)
-                    channel = result.get('uploader_id', None)
-                    uploader = result.get('uploader', None)
-
-
-                    uploader_link = f'https://www.youtube.com/{channel}'
-                    delete = (f'yt/{video_id}.mp4')
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                                async with session.get(url) as response:
-                                    if response.status == 200:
-                                        logger.info(response.status)
-                                        total_size = int(response.headers.get('content-length', 0))
-                                        with open(delete, 'wb') as f, tqdm(
-                                            total=total_size, unit='B', unit_scale=True, desc=delete) as pbar:
-                                            async for chunk in response.content.iter_any():
-                                                f.write(chunk)
-                                                pbar.update(len(chunk))
-                                        logger.info(f"[Youtube:video] | Downloaded and saved as {delete}")
-                                    else:
-                                        logger.info(f"[Youtube:video] | Can't get data from {url}| Response: {response.status}")
-                    except Exception as e:
-                        logger.info(e)
-                        keyboard = InlineKeyboardMarkup()
-                        keyboard.add(
-                            InlineKeyboardButton(
-                                text='❌ Close',
-                                callback_data='close'
-                            ),
-                        )
-                        await bot.delete_message(call.message.chat.id, call.message.message_id)
-                        await bot.send_message(text=error_txt, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
-                
-                    caption = f"📹: <a href='{link}'>{video_title}</a>\n\n👤: <a href='{uploader_link}'>{uploader}</a>"
-                    await bot.delete_message(call.message.chat.id, call.message.message_id)
-                    await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_VIDEO)
-                    video = open(f'yt/{video_id}.mp4', 'rb')
-                    sended_to_user = await bot.send_video(chat_id=chat_id, video=video, caption=caption, reply_to_message_id=message_id, supports_streaming=True)
-                    sended_media = await bot.copy_message(CACHE_CHAT, chat_id, sended_to_user.message_id)
-                    try:
-                                cursor.execute('INSERT INTO video_cache (chat_id, message_id, video_link) VALUES (?, ?, ?)',
-                                                        (CACHE_CHAT, sended_media.message_id, link))
-                                conn.commit()
-                                logger.info(f'[YouTube] | {ConsoleColors.OKGREEN}{link} cached{ConsoleColors.ENDC}')
-                    except Exception as e:
-                                logger.info(f'[Media] | Failed to cache {link}')
-                        # deleting file after
-                    os.remove(delete)
-                    logger.info("%s has been removed successfuly" % delete)
-                else:
-                    await call.message.edit_text('Video is longer than 6 min!')
-            except Exception as e:
-                logger.info(f'Error when tried to dwnld: {e}')
-# if not youtube download
-
-
+# twitch clips/vk handler
 
 
 @dp.message_handler(regexp=r'(?:https?://)?(?:www\.)?(?:vk\.com/clip|twitch\.tv/)')
-async def loadvideo(message: types.Message):
+@tools.log('TWITCH_VK_LINKS')
+async def twitch_vk_handler(message: types.Message):
+    message_id = message.message_id
     current_date = datetime.now(pytz.timezone('Asia/Almaty'))
     if current_date.tzinfo == None or current_date.\
             tzinfo.utcoffset(current_date) == None:
@@ -570,6 +433,7 @@ tiktok_pattern = r'(https?://(?:www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.
 
 
 @dp.message_handler(regexp=tiktok_pattern)
+@tools.log('TIKTOK_LINKS')
 async def tiktok_downloader(message: types.Message):
     # logger.info(event.chat.id)
     if message.chat.id in ignore_ids:
@@ -660,85 +524,16 @@ async def tiktok_downloader(message: types.Message):
                     
         except Exception as e:
             logger.exception(f'ERROR DOWNLOADING TIKTOK: {e}\nTraceback: {traceback.print_exc()}') 
-# audio section here mp3/soundcloud
-# audio download
 
 
-@dp.callback_query_handler(text='download_mp3')
-async def inline_keyboard_mp3(call: types.CallbackQuery):
-    logger.info("downloading mp3 format")
-    loading = "<i>Жүктеу | Loading</i>"
-    await call.message.edit_text(text=loading)
-    chat_id = call.message.chat.id
-    cursor.execute(
-                'SELECT chat_id, message_id FROM video_cache WHERE video_link = ?', (link,))
-    cache_result = cursor.fetchone()
-    if cache_result:
-                from_chat_id, from_message_id = cache_result
-                await bot.copy_message(chat_id, from_chat_id, from_message_id, reply_to_message_id=message_id)
-    else:
-        options = {
-            'skip-download': True,
-            'noplaylist': True,
-            'format': 'bestaudio/best',
-            'outtmpl': 'audio/%(id)s',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'cookies-from-browser': 'chrome',
-        }
-        try:
-            with ytd.YoutubeDL(options) as ytdl:
-                ytdl.download([link])
-        except:
-            logger.info(ValueError)
-            keyboard = InlineKeyboardMarkup()
-            keyboard.add(
-                InlineKeyboardButton(
-                    text='❌ Close',
-                    callback_data='close'
-                ),
-            )
-            await bot.delete_message(call.message.chat.id, call.message.message_id)
-            await bot.send_message(text=error_txt, chat_id=chat_id, reply_to_message_id=message_id, reply_markup=keyboard)
-        result = ytdl.extract_info("{}".format(link))
-        title = ytdl.prepare_filename(result)
-        video_title = result.get('title', None)
-        channel = result.get('uploader_id', None)
-        uploader = result.get('uploader', None)
-        uploader_link = f'https://www.youtube.com/{channel}'
-        delete = (f'{title}.mp3')
-        audio = open(f'{title}.mp3', 'rb')
-
-        metadata = ID3(delete)
-        metadata.add(TIT2(encoding=3, text=video_title))
-        metadata.add(TPE1(encoding=3, text=uploader))
-        metadata.save()
-
-        caption = f"🎧: <a href='{link}'>{video_title}</a>\n\n👤: <a href='{uploader_link}'>{uploader}</a>"
-        await bot.delete_message(call.message.chat.id, call.message.message_id)
-        await bot.send_chat_action(call.message.chat.id, ChatActions.UPLOAD_AUDIO)
-        sended_to_user = await bot.send_audio(chat_id=chat_id, audio=audio, caption=caption, reply_to_message_id=message_id)
-        sended_audio = await bot.copy_message(CACHE_CHAT, chat_id, sended_to_user.message_id)
-        try:
-                cursor.execute('INSERT INTO video_cache (chat_id, message_id, video_link) VALUES (?, ?, ?)',
-                                        (CACHE_CHAT, sended_audio.message_id, link))
-                conn.commit()
-                logger.info(f'[Media:track] | {ConsoleColors.OKGREEN}{link} cached{ConsoleColors.ENDC}')
-        except Exception as e:
-                logger.info(f'[Media:track] | Failed to cache {link}')
-        # deleting file after
-        os.remove(delete)
-        logger.info("%s has been removed successfuly" % title)
-# soundcloud track install
+# soundcloud handlers
 
 sc = SoundCloudTool()
 SOUNDCLOUD_PATTERN = r'(https?://(?:www\.)?soundcloud\.com/[^\s]+)'
 
 
 @dp.message_handler(regexp=SOUNDCLOUD_PATTERN)
+@tools.log('SC_TRACK_LINKS')
 async def soundload(message: types.Message):
     chat_id = message.chat.id
     message_id = message.message_id
@@ -840,6 +635,7 @@ def check_query(query, max_words=7):
 sound_track_data: dict = {}
 
 @dp.message_handler(commands=['sc'])
+@tools.log('SC_TRACK_SEARCH')
 async def soundsearch(message: types.Message):
     chat_id = message.chat.id
     event_chat = message.chat
@@ -976,170 +772,11 @@ async def download_soundcl_track(callback_query: types.CallbackQuery):
                 logger.error(f'Failed to remove temporary file {file_path}: {e}')
 
 
-@dp.message_handler(regexp=r'(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be)')
-async def downloading(message: types.Message):
-    current_date = datetime.now(pytz.timezone('Asia/Almaty'))
-    if current_date.tzinfo == None or current_date.\
-            tzinfo.utcoffset(current_date) == None:
-        logger.info("Unaware")    
-    else:
-        logger.info("======")
-    username = message.from_user.full_name
-    msg = message.text
-    logger.info(f"[{current_date}] {username} : {msg}")
-    if message.chat.id in ignore_ids:
-        return False
-    else:
-        global link
-        link = await tools.convert_share_urls(message.text)
-        global message_id
-        message_id = message.message_id
-        # messages texts
-        text = text_txt
-        keyboard = InlineKeyboardMarkup()
-        keyboard.add(
-            InlineKeyboardButton(text='📹', callback_data='download_mp4'),
-            InlineKeyboardButton(text='🔊', callback_data='download_mp3'),
-            # InlineKeyboardButton(text='Image (TikTok)',
-            #                      callback_data='download_img'),
-        )
-        return await message.reply(text=text, reply_markup=keyboard)
-
-
-async def download_playlist_mp3(playlist_url, chat_id, download_path, event_message_id, message):
-    if not os.path.exists(download_path):
-        os.makedirs(download_path)
-
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'writethumbnail': True,
-        'embedthumbnail': True,
-        'postprocessors': [
-            {
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            },
-            {
-                'key': 'EmbedThumbnail',
-            }
-        ],
-        'outtmpl': f'{download_path}track_%(id)s.%(ext)s',
-    }
-
-    with ytd.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(playlist_url, download=False)
-        num_tracks = len(info['entries'])
-        await bot.edit_message_text(f'<b>Downloading</b> 📥 | <a href="{playlist_url}">Playlist ({num_tracks} tracks)</a>',
-                                    chat_id=chat_id, message_id=event_message_id, parse_mode='html', disable_web_page_preview=True)
-
-        for entry in info['entries']:
-            if entry:
-                video_url = entry['webpage_url']
-                cursor.execute(
-                    'SELECT chat_id, message_id FROM audio_cache WHERE audio_link = ?', (video_url,))
-                result = cursor.fetchone()
-
-                try:
-                    if result:
-                        logger.info('[playlist] track already downloaded')
-                        cached_chat_id, message_id = result
-                        return await bot.copy_message(chat_id, cached_chat_id, message_id, reply_to_message_id=event_message_id)
-                    else:
-                        try:
-                            ids = entry['id']
-                            file_name = f'track_{ids}'
-                            title = entry['title']
-                            uploader = entry['uploader']
-                        except KeyError:
-                            uploader = 'None'
-                        ydl.download([video_url])
-                        video_path = download_path + file_name + '.mp3'
-                        caption = f"<a href='{video_url}'>{title}</a>"
-
-                        tag = TinyTag.get(video_path)
-                        duration = int(tag.duration)
-
-                        cached_track = await bot.send_audio(chat_id, 
-                                                audio=open(video_path, 'rb'), 
-                                                caption=caption, 
-                                                performer=uploader,
-                                                title=title, 
-                                                duration=duration,
-                                                reply_to_message_id=event_message_id)
-
-                        cursor.execute('INSERT INTO audio_cache (chat_id, message_id, audio_link) VALUES (?, ?, ?)',
-                                        (chat_id, cached_track.message_id, video_url))
-                        conn.commit()
-                        logger.info('[playlist] track successfully cached')
-
-                        if os.path.exists(video_path):
-                            os.remove(video_path)
-                            logger.info('Video deleted successfully')
-                except ChatNotFound as e:
-                    print(f'Chat Not Found trying to download: {e}')
-                    try:
-                        ids = entry['id']
-                        file_name = f'track_{ids}'
-                        title = entry['title']
-                        uploader = entry['uploader']
-                    except KeyError:
-                        uploader = 'None'
-                    ydl.download([video_url])
-                    video_path = download_path + file_name + '.mp3'
-                    caption = f"<a href='{video_url}'>{title}</a>"
-
-                    tag = TinyTag.get(video_path)
-                    duration = int(tag.duration)
-
-                    cached_track = await bot.send_audio(chat_id, 
-                                            audio=open(video_path, 'rb'), 
-                                            caption=caption, 
-                                            performer=uploader,
-                                            title=title, 
-                                            duration=duration,
-                                            reply_to_message_id=event_message_id)
-
-                    cursor.execute('INSERT INTO audio_cache (chat_id, message_id, audio_link) VALUES (?, ?, ?)',
-                                    (chat_id, cached_track.message_id, video_url))
-                    conn.commit()
-                    logger.info('[playlist] track successfully cached')
-
-                    if os.path.exists(video_path):
-                        os.remove(video_path)
-                        logger.info('Video deleted successfully')
-
-        await bot.edit_message_text(f'<b>Done</b> ✅ | <a href="{playlist_url}">Playlist</a>',
-                                    chat_id=chat_id, message_id=event_message_id, parse_mode='html', disable_web_page_preview=True)
-        logger.info('[playlist] Finished downloading')
-
-
-
-@dp.message_handler(commands=['playlist'])
-async def mp3playlist_handler_download(message: types.Message):
-    message_text = message.text
-    url_pattern = r'/playlist\s+(https?://\S+)'
-
-    match = re.search(url_pattern, message_text)
-    if match:
-        playlist_url = match.group(1)
-
-        chat_id = message.chat.id
-        to_edit = await bot.send_message(chat_id, "<b>Starting to download!</b> | <code>Type: [playlist]</code>",
-                                         reply_to_message_id=message.message_id, parse_mode='html')
-        download_path = 'audio/'
-
-        try:
-            await download_playlist_mp3(playlist_url, chat_id, download_path, to_edit.message_id, message)
-        except Exception as e:
-            print(f'Error in playlist download: {e}')
-    else:
-        await message.reply("Please provide a valid playlist URL.\n\nExample:https://soundcloud.com/damirtag/sets/for-gym-by-damirtag")
-
 
 """ Instagram POSTS """
 
 @dp.message_handler(regexp=r'(https?://)?(www\.)?instagram\.com/p/.*')
+@tools.log('INST_POST')
 async def inst_photos_handler(message: types.Message):
     event_chat = message.chat
     if event_chat.id in ignore_ids:
@@ -1243,6 +880,7 @@ async def download_inst_post(session: aiohttp.ClientSession, url, download_dir):
 
 
 @dp.message_handler(regexp=r'(https?://)?(www\.)?instagram\.com/(reel|share|tv)/.*')
+@tools.log('REELS_LINKS')
 async def inst_reels_handler(message: types.Message):
     event_chat = message.chat
 
@@ -1255,8 +893,6 @@ async def inst_reels_handler(message: types.Message):
     if event_chat.id in ignore_ids:
         return False
     else:
-
-        # username, fullname = await get_user_info(event_chat.id)
         reel_url = await tools.convert_share_urls(message.text)
 
         await bot.send_chat_action(message.chat.id, ChatActions.RECORD_VIDEO)
@@ -1308,6 +944,71 @@ async def inst_reels_handler(message: types.Message):
             except Exception as e:
                 logger.info(f'[Instagram:video] | {e}')
                 
+
+@dp.message_handler(commands=["admin"])
+async def stats_command(message: types.Message):
+    if message.from_user.id != 1038468423:
+        return None
+    conn = sqlite3.connect("stats.db")
+    cursor = conn.cursor()
+
+    # Общее количество пользователей
+    cursor.execute("SELECT COUNT(*) FROM users")
+    user_count = cursor.fetchone()[0]
+
+    # ТОП-5 команд
+    cursor.execute("""
+        SELECT command, COUNT(*) FROM commands 
+        GROUP BY command 
+        ORDER BY COUNT(*) DESC 
+        LIMIT 5
+    """)
+    top_commands = cursor.fetchall()
+
+    # ТОП-10 последних активных пользователей
+    cursor.execute("""
+        SELECT users.username, users.first_name, users.last_name, MAX(commands.used_at) 
+        FROM users 
+        JOIN commands ON users.user_id = commands.user_id 
+        GROUP BY users.user_id 
+        ORDER BY MAX(commands.used_at) DESC 
+        LIMIT 10
+    """)
+    recent_users = cursor.fetchall()
+
+    # ТОП-10 самых активных пользователей
+    cursor.execute("""
+        SELECT users.username, users.first_name, users.last_name, COUNT(commands.id) as cmd_count 
+        FROM users 
+        JOIN commands ON users.user_id = commands.user_id 
+        GROUP BY users.user_id 
+        ORDER BY cmd_count DESC 
+        LIMIT 10
+    """)
+    active_users = cursor.fetchall()
+
+    conn.close()
+
+    stats_text = f"👥 <b>Всего пользователей:</b> <code>{user_count}</code>\n\n"
+
+    # Добавляем ТОП-5 команд
+    stats_text += "📊 <b>ТОП-5 команд:</b>\n"
+    for command, count in top_commands:
+        stats_text += f" - <code>/{command}</code>: {count} раз\n"
+    
+    stats_text += "\n👤 <b>ТОП-10 последних активных пользователей:</b>\n"
+    for user in recent_users:
+        username = f"@{user[0]}" if user[0] else f"{user[1] or ''} {user[2] or ''}".strip()
+        last_used = user[3]
+        stats_text += f" - {username} (последний раз: {last_used})\n"
+
+    stats_text += "\n🔥 <b>ТОП-10 самых активных пользователей:</b>\n"
+    for user in active_users:
+        username = f"@{user[0]}" if user[0] else f"{user[1] or ''} {user[2] or ''}".strip()
+        command_count = user[3]
+        stats_text += f" - {username}: {command_count} команд\n"
+
+    await message.reply(stats_text, parse_mode="HTML")
 
 
 if __name__ == '__main__':

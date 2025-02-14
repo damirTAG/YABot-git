@@ -1,23 +1,17 @@
-# This is part of Yerzhan Akhanseri bot source code
-# This file is under MIT License
-# here located all text elements that was used in main script of bot
-
-
-start_txt = """
-🏴󠁧󠁢󠁥󠁮󠁧󠁿󠁧󠁢󠁥󠁮󠁧󠁿 Hi! This is Multifunctional bot, type /help
-🇰🇿 Сәлем! Бұл Көп функционалды бот, /help командасы жаз
-"""
-text_txt = "Қандай пішінде жүктеп алу керек?\nIn what type to download?"
-error_txt = f'<i>Жүктеу кезінде қате орын алды\nError while sending content</i>'
+start_txt = "Hi! This is multifunctional bot, press /help"
+text_txt = "In what type to download?"
+error_txt = f'<i>Error while sending content</i>'
 help_txt = """
 <b>Supporting services:</b>
-<i>🔴 YouTube Video/Shorts/Music
-🔵 Instagram Reels/Posts
+<i>🔵 Instagram Reels/Posts
 🔵 VK Clips
 🟣 Twitch Clips
 ⚫️ TikTok Videos/Pics
 🟠 SoundCloud Search/Track
 🟡 Yandex.Music Search/Track (New)
+
+Unavailable:
+<s>🔴 YouTube Video/Shorts/Music</s>
 </i>
 
 <b>Commands:</b>
@@ -29,3 +23,18 @@ help_txt = """
 🎤 <i>Voice recognizer</i> (works in groups), recognizes voice and sends text of recognized audio.
 """
 update_txt = ""
+
+class YANDEX_MUSIC_TRACK_CAPTION:
+    def __init__(self, track):
+        self.track = track
+
+    def format(self) -> str:
+        return (
+            f"<b>🎵 Track:</b> <a href='https://music.yandex.com/album/{self.track.album_id}/track/{self.track.id}'>"
+            f"{self.track.title}</a> • {self.track.year}\n"
+            f"<b>👥 Artists:</b> <i>{self.track.artists}</i>\n"
+            f"<b>📀 Album:</b> <a href='https://music.yandex.com/album/{self.track.album_id}'>"
+            f"{self.track.album_title}</a>\n"
+            f"<b>🎶 Genre:</b> <i>{self.track.genre.capitalize()}</i>\n"
+            f"<b>⏱️ Duration:</b> <code>{int(self.track.duration // 60)}:{int(self.track.duration % 60):02d}</code>"
+        )

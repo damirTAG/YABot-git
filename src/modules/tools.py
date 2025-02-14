@@ -1,5 +1,8 @@
 import aiohttp, re
 from dataclasses import dataclass
+from functools import wraps
+from aiogram import types
+import sqlite3
 
 
 class SoundCloudSearchException(Exception):
@@ -42,6 +45,33 @@ class Tools():
             print(e)
             return None
 
+    @staticmethod
+    def log(command_name):
+        def decorator(handler):
+            @wraps(handler)
+            async def wrapper(message: types.Message, *args, **kwargs):
+                user_id = message.from_user.id
+                username = message.from_user.username
+                first_name = message.from_user.first_name
+                last_name = message.from_user.last_name
+
+                conn = sqlite3.connect("stats.db")
+                cursor = conn.cursor()
+
+                # Добавляем пользователя, если его нет
+                cursor.execute("INSERT OR IGNORE INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)", 
+                            (user_id, username, first_name, last_name))
+
+                # Логируем команду
+                cursor.execute("INSERT INTO commands (user_id, command) VALUES (?, ?)", (user_id, command_name))
+                
+                conn.commit()
+                conn.close()
+
+                return await handler(message, *args, **kwargs)
+            return wrapper
+        return decorator
+
 @dataclass
 class ConsoleColors:
     HEADER = '\033[95m'
@@ -54,11 +84,38 @@ class ConsoleColors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-@dataclass
-class Platforms:
-    Tiktok = 'TikTok'
-    Instagram = 'Instagram'
-    Youtube = 'YouTube'
-    Soundcloud = 'Soundcloud'
-    Twitch = 'Twitch'
-    VK = 'VK'
+def init_db():
+    conn = sqlite3.connect("stats.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            command TEXT,
+            used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            message TEXT,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+
+    conn.commit()
