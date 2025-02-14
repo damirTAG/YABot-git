@@ -11,18 +11,19 @@ text_txt = "Қандай пішінде жүктеп алу керек?\nIn what
 error_txt = f'<i>Жүктеу кезінде қате орын алды\nError while sending content</i>'
 help_txt = """
 <b>Supporting services:</b>
-<i>🔴 YouTube Shorts
-🔴 YouTube Music
-🔴 YouTube Video
-🔵 Instagram Reels
-🔵 Instagram Posts
+<i>🔴 YouTube Video/Shorts/Music
+🔵 Instagram Reels/Posts
 🔵 VK Clips
 🟣 Twitch Clips
-⚫️ TikTok
-🟠 SoundCloud</i>
+⚫️ TikTok Videos/Pics
+🟠 SoundCloud Search/Track
+🟡 Yandex.Music Search/Track (New)
+</i>
 
 <b>Commands:</b>
-<code>[/roll]</code> — roll number between 1 and 100 (like in dota)
+<code>/ym [query]</code> — search tracks from YandexMusic
+<code>/sc [query]</code> — search tracks from SoundCloud
+<code>/roll</code> — roll number between 1 and 100 (like in dota)
 
 <b>Features:</b>
 🎤 <i>Voice recognizer</i> (works in groups), recognizes voice and sends text of recognized audio.
