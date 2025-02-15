@@ -7,15 +7,16 @@ from allText import (
     start_txt, 
     error_txt, 
     help_txt, 
-    update_txt
+    update_txt,
+    cool_phrases
 )
 # TEXT FILES IMPORT END
 
 import pytz
 import yt_dlp as ytd
-import os, re, uuid
+import os, re, uuid, time
 import sqlite3
-import json
+import json, random
 import aiohttp, asyncio
 import shutil
 import logging
@@ -28,7 +29,10 @@ from modules import (
     SoundCloudTool,
     TikTok, 
     metadata,
-    Converter
+    Converter,
+    CryptoAPI,
+    FiatAPI,
+    get_change_emoji
 )
 
 from random import randrange
@@ -103,6 +107,12 @@ almaty_tz = pytz.timezone('Etc/GMT-5')
 @dp.callback_query_handler(text="close")
 async def close(call: types.CallbackQuery):
     await bot.delete_message(call.message.chat.id, call.message.message_id)
+
+@dp.callback_query_handler(text=["waiting", "confirmed"])
+async def waiting(call: types.CallbackQuery):
+    await call.answer(
+        random.choice(cool_phrases).lower()[:200], True
+    )
 
 @dp.message_handler(commands=['sendall'])
 async def send_all(message: types.Message):
@@ -192,7 +202,7 @@ async def yandex_music_link_handler(m: types.Message):
         track_uuid = uuid.uuid4().hex[:8]
         ya_track_data[track_uuid] = track
 
-        keyboard = InlineKeyboardMarkup()
+        keyboard = InlineKeyboardMarkup(row_width=1)
         keyboard.add(
             InlineKeyboardButton("⬇️ Download", callback_data=f"yandex_{track_uuid}"),
             InlineKeyboardButton("❌ Close", callback_data='close')
@@ -215,7 +225,7 @@ async def download_yandex_track(callback_query: types.CallbackQuery):
     if track_uuid not in ya_track_data:
         return await bot.send_message(callback_query.from_user.id, "🚫 Track not found.")
 
-    track: TrackData = ya_track_data[track_uuid]  # get  TrackData  obj
+    track: TrackData = ya_track_data[track_uuid]  # get TrackData obj
     msg = callback_query.message  # get Message
     try:
         # Check cache first
@@ -388,8 +398,10 @@ async def twitch_vk_handler(message: types.Message):
 
                 keyboard = InlineKeyboardMarkup()
                 keyboard.add(
-                    InlineKeyboardButton(text='❌ Close',
-                                        callback_data='close'),
+                    InlineKeyboardButton(
+                        text='❌ Close',
+                        callback_data='close'
+                    ),
                 )
                 await bot.send_message(text=error_txt, chat_id=message.chat.id, reply_to_message_id=message_id, reply_markup=keyboard)
                 
@@ -897,8 +909,7 @@ async def inst_reels_handler(message: types.Message):
 
         await bot.send_chat_action(message.chat.id, ChatActions.RECORD_VIDEO)
         
-        cursor.execute(
-                'SELECT chat_id, message_id FROM video_cache WHERE video_link = ?', (reel_url,))
+        cursor.execute('SELECT chat_id, message_id FROM video_cache WHERE video_link = ?', (reel_url,))
         result = cursor.fetchone()
         if result:
             from_chat_id, from_message_id = result
@@ -908,10 +919,14 @@ async def inst_reels_handler(message: types.Message):
 
             video_filename = f'{shortcode}.mp4'
             url = f'https://ddinstagram.com/videos/{shortcode}/1'
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (iPad; U; CPU OS 3_2 like Mac OS X; en-us) AppleWebKit/531.21.10 (KHTML, like Gecko) '
+                'Version/4.0.4 Mobile/7B334b Safari/531.21.102011-10-16 20:23:10'
+            }
 
             try:
                 if not os.path.exists(video_filename):
-                    async with aiohttp.ClientSession() as session:
+                    async with aiohttp.ClientSession(headers=headers) as session:
                         async with session.get(url) as response:
                             if response.status == 200:
                                 total_size = int(response.headers.get('content-length', 0))
@@ -923,7 +938,7 @@ async def inst_reels_handler(message: types.Message):
 
                                 logger.info(f"[Instagram:video] | Downloaded and saved as {video_filename}")
                             else:
-                                logger.info(f"[Instagram:video] | Can't get data from {url}| Response: {response.status}")
+                                logger.info(f"[Instagram:video] | Can't get data from {url} | Response: {response.status}")
                 else:
                     logger.info(f"[Instagram:video] | {video_filename} already exists. Skipping download.")
 
@@ -943,7 +958,222 @@ async def inst_reels_handler(message: types.Message):
                     logger.info("% s has been removed successfully" % video_filename)    
             except Exception as e:
                 logger.info(f'[Instagram:video] | {e}')
-                
+
+crypto_api = CryptoAPI()
+fiat_api = FiatAPI()
+
+@dp.message_handler(regexp=r"^(\d+(?:\.\d+)?\s+)?[a-zA-Z]+(\s+[a-zA-Z]+)?$")
+@tools.log('COINS_CONVERTER')
+async def convert_currency(message: types.Message):
+    """Currency conversion handler"""
+    try:
+        # Parse the message
+        parsed = tools.parse_currency_query(message.text)
+        if not parsed:
+            return
+        
+        amount, from_currency, to_currency = parsed
+        
+        # Try crypto conversion first
+        crypto_price = await crypto_api.get_crypto_price_with_changes(from_currency, to_currency)
+        if crypto_price:
+            total = amount * crypto_price.current_price
+            response = [
+                f"<code>{amount} {from_currency.upper()} = {total:.2f} {to_currency.upper()}</code>",
+                f"\n<b> - 24h Change:</b> {get_change_emoji(crypto_price.change_24h)} <code>{crypto_price.change_24h:.2f}%</code>",
+                f"\n<b> - 7d Change:</b> {get_change_emoji(crypto_price.change_7d)} <code>{crypto_price.change_7d:.2f}%</code>"
+            ]
+            await message.reply("".join(response))
+            return
+
+        current_rate = await fiat_api.get_fiat_rate_with_change(from_currency, to_currency)
+        if current_rate:
+            total = amount * current_rate
+            response = [
+                f"<code>{amount:g} {from_currency.upper()} = {total:.2f} {to_currency.upper()}</code>",
+            ]
+            await message.reply("".join(response))
+            return
+        
+    except Exception as e:
+        print(f"Error in conversion handler: {str(e)}")
+
+# ask handlers (4o-mini chatgpt)
+MAX_LENGTH = 150  # Max query length
+user_queries: dict = {}
+
+# /ask command
+@dp.message_handler(commands='ask')
+@tools.log('ASK')
+async def ask_handler(m: types.Message):
+    query: str = m.get_args()
+    user = m.from_user
+
+    if m.reply_to_message and not query:
+        query = m.reply_to_message.text
+    if not query:
+        return await m.reply('Query is empty. Example use: <code>/ask whats the Pi number?</code>')
+    if len(query) > MAX_LENGTH:
+        query = query[:MAX_LENGTH].rstrip() + "..."
+    if user.username:
+        user_mention = f"@{user.username}"
+    else:
+        user_mention = f"[{user.full_name}](tg://user?id={user.id})"
+    
+    temp_key = InlineKeyboardMarkup()
+    temp_key.add(
+        InlineKeyboardButton(
+            '⏳ Generating...',
+            callback_data='waiting'
+        )
+    )
+    temp_msg = await m.reply(
+        f'{user_mention} asking for: <code>{query}</code>',
+        reply_markup=temp_key
+    )
+    logger.info(f'{user.full_name} [{user.username}]: Asking for {query}')
+
+    start_time = time.time()
+    response = await tools.generate_response(query)
+    end_time = time.time()
+    taken_time = round(end_time - start_time, 2)
+
+    if response:
+        await temp_msg.delete()
+        resp_key = InlineKeyboardMarkup()
+        resp_key.add(
+            InlineKeyboardButton(
+                f'✅ {taken_time} sec', callback_data='confirmed'
+            )
+        )
+        await m.reply(
+            f"{user_mention}: `{query}`\n\n*Answer:*\n{response}",
+            reply_markup=resp_key,
+            parse_mode='Markdown'
+        )
+    else:
+        await temp_msg.delete()
+        failed_key = InlineKeyboardMarkup()
+        failed_key.add(
+            InlineKeyboardButton(
+                '❌ Failed',
+                callback_data='failed'
+            )
+        )
+        await m.reply(
+            f'{user_mention} asked for: <code>{query}</code>\n\n*Response failed =(*',
+            reply_markup=failed_key,
+            parse_mode='Markdown'
+        )
+
+
+# inline
+@dp.inline_handler(regexp=r'(?i)^ask\b.+$')
+@tools.log('CHATGPT')
+async def chatgpt_inline_handler(inline_query: types.InlineQuery):
+    user_input = inline_query.query[4:].strip()  # Remove "ask " prefix
+    if len(user_input) > MAX_LENGTH:
+        user_input = user_input[:MAX_LENGTH].rstrip() + "..."
+    user = inline_query.from_user
+
+    if len(user_input) < 3:
+        return  # Ignore short queries
+
+    try:
+        # Generate a unique ID for this query
+        result_id = uuid.uuid4().hex[:8]
+
+        # Store query for later processing
+        user_queries[result_id] = (user.id, user.username, user.full_name, user_input)
+        if user.username:
+            user_mention = f"@{user.username}"
+        else:
+            user_mention = f"[{user.full_name}](tg://user?id={user.id})"
+
+        # Temporary placeholder message
+        keyboard = InlineKeyboardMarkup()
+        keyboard.add(
+            InlineKeyboardButton(
+                '⏳ Generating...',
+                callback_data='waiting'
+            )
+        )
+        item = types.InlineQueryResultArticle(
+            id=result_id,
+            title="Answer from AI",
+            description=f"Asking for: {user_input}",
+            input_message_content=types.InputTextMessageContent(
+                message_text=f"{user_mention} asking for: <code>{user_input}</code>"
+            ),
+            reply_markup=keyboard
+        )
+
+        # Answer inline query with temporary result
+        
+        await bot.answer_inline_query(
+            inline_query.id, 
+            results=[item], 
+            cache_time=0
+        )
+        logger.info(f'{user.full_name} [{user.username}]: Asking for {user_input}')
+
+    except Exception as e:
+        logger.error(f"Error in inline handler: {e}")
+
+@dp.chosen_inline_handler(lambda chosen_inline_query: re.search(r"(?i)^ask\b.+$", chosen_inline_query.query))
+async def chatgpt_chosen_inline_handler(chosen_inline_query: types.ChosenInlineResult):
+    try:
+        message_id = chosen_inline_query.inline_message_id
+        result_id = chosen_inline_query.result_id
+
+        if result_id not in user_queries:
+            return  # Ignore if not found
+
+        user_id, username, full_name, user_prompt = user_queries[result_id]
+        if username:
+            user_mention = f"@{username}"
+        else:
+            user_mention = f"[{full_name}](tg://user?id={user_id})"
+
+        # Generate actual response from ChatGPT
+        start_time = time.time()
+        response = await tools.generate_response(user_prompt)
+        end_time = time.time()
+        taken_time = round(end_time - start_time, 2)
+
+        # Edit the inline message with the actual response
+        if response:
+            keyboard = InlineKeyboardMarkup()
+            keyboard.add(
+                InlineKeyboardButton(
+                    f'✅ {taken_time} sec', callback_data='confirmed'
+                )
+            )
+            await bot.edit_message_text(
+                inline_message_id=message_id,
+                text=f"{user_mention}: `{user_prompt}`\n\n*Answer:*\n{response}",
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
+        else:
+            keyboard = InlineKeyboardMarkup()
+            keyboard.add(
+                InlineKeyboardButton(
+                    '❌ Failed', callback_data='failed'
+                )
+            )
+            await bot.edit_message_text(
+                inline_message_id=message_id,
+                text=f"{user_mention}: `{user_prompt}`\n\n*Response failed =(*",
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
+        # Cleanup stored data
+        del user_queries[result_id]
+
+    except Exception as e:
+        logging.error(f"Error in chosen inline handler: {e}")
+
 
 @dp.message_handler(commands=["admin"])
 async def stats_command(message: types.Message):
@@ -956,20 +1186,23 @@ async def stats_command(message: types.Message):
     cursor.execute("SELECT COUNT(*) FROM users")
     user_count = cursor.fetchone()[0]
 
-    # ТОП-5 команд
+    # ТОП-10 команд
     cursor.execute("""
         SELECT command, COUNT(*) FROM commands 
         GROUP BY command 
         ORDER BY COUNT(*) DESC 
-        LIMIT 5
+        LIMIT 10
     """)
     top_commands = cursor.fetchall()
 
     # ТОП-10 последних активных пользователей
     cursor.execute("""
-        SELECT users.username, users.first_name, users.last_name, MAX(commands.used_at) 
+        SELECT users.username, users.first_name, users.last_name, commands.command, commands.used_at
         FROM users 
         JOIN commands ON users.user_id = commands.user_id 
+        WHERE commands.used_at = (
+            SELECT MAX(used_at) FROM commands WHERE commands.user_id = users.user_id
+        ) 
         GROUP BY users.user_id 
         ORDER BY MAX(commands.used_at) DESC 
         LIMIT 10
@@ -991,8 +1224,8 @@ async def stats_command(message: types.Message):
 
     stats_text = f"👥 <b>Всего пользователей:</b> <code>{user_count}</code>\n\n"
 
-    # Добавляем ТОП-5 команд
-    stats_text += "📊 <b>ТОП-5 команд:</b>\n"
+    # Добавляем ТОП-10 команд
+    stats_text += "📊 <b>ТОП-10 команд:</b>\n"
     for command, count in top_commands:
         stats_text += f" - <code>/{command}</code>: {count} раз\n"
     
@@ -1000,7 +1233,10 @@ async def stats_command(message: types.Message):
     for user in recent_users:
         username = f"@{user[0]}" if user[0] else f"{user[1] or ''} {user[2] or ''}".strip()
         last_used = user[3]
-        stats_text += f" - {username} (последний раз: {last_used})\n"
+        last_used_utc = datetime.strptime(user[4], "%Y-%m-%d %H:%M:%S")  
+        last_used_oral = last_used_utc.replace(tzinfo=pytz.utc).astimezone(almaty_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+        stats_text += f" - {username} (<code>/{last_used}</code>: {last_used_oral})\n"
 
     stats_text += "\n🔥 <b>ТОП-10 самых активных пользователей:</b>\n"
     for user in active_users:
@@ -1008,10 +1244,16 @@ async def stats_command(message: types.Message):
         command_count = user[3]
         stats_text += f" - {username}: {command_count} команд\n"
 
-    await message.reply(stats_text, parse_mode="HTML")
+    await message.reply(stats_text)
 
+async def init_coins_apis():
+    await crypto_api.init_session()
+    await fiat_api.init_session()
+
+async def on_startup(dp):
+    await init_coins_apis()
 
 if __name__ == '__main__':
     logger.info(f"{ConsoleColors.OKGREEN}Starting bot{ConsoleColors.ENDC}")
     loop = asyncio.get_event_loop()
-    executor.start_polling(dp, skip_updates = True)
+    executor.start_polling(dp, on_startup=on_startup, skip_updates=True)

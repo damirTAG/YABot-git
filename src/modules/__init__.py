@@ -3,18 +3,18 @@ from .convert import Converter
 from .tiktok import TikTok, metadata
 
 from .tools import (
-    Tools,
-    init_db,
-    ConsoleColors
+    Tools, ConsoleColors, init_db
 )
 
 from .ymtool import (
-    YandexMusicSDK, 
-    TrackData, 
-    ChartData
+    YandexMusicSDK, TrackData, ChartData
 )
 
 from .soundcloud import SoundCloudTool
+
+from .coins import (
+    FiatAPI, CryptoAPI, get_change_emoji
+)
 
 __all__ = [
     'Converter',
@@ -26,5 +26,8 @@ __all__ = [
     'ConsoleColors',
     'YandexMusicSDK',
     'TrackData',
-    'ChartData'
+    'ChartData',
+    'FiatAPI',
+    'CryptoAPI',
+    'get_change_emoji'
 ]

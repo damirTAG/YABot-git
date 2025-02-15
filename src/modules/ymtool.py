@@ -337,7 +337,7 @@ class YandexMusicSDK:
         ]
         
         if not suitable_links:
-            self.logger.error("No direct links found, trying with lower bitrate")
+            self.logger.error("No direct links found")
             return
         download_url = suitable_links[0]['direct_link']
 
@@ -364,7 +364,7 @@ class YandexMusicSDK:
         self,
         query: str,
         type: str = 'track',
-        count: int = 7,
+        count: int = 10,
         download: bool = True,
         lyrics: bool = False,
         upload_dir: typing.Optional[str] = None
@@ -385,7 +385,9 @@ class YandexMusicSDK:
             
             async def process_track(track: Track):
                 """Process a single track with all its metadata"""
-                self.logger.info(f'Found track: {track.title} | {self._convert_to_seconds(track.duration_ms)} sec')
+                self.logger.info(
+                    f'Found track: {track.title} | {self._convert_to_seconds(track.duration_ms)} sec'
+                )
                 
                 album = track.albums[0] if track.albums else None
                 
@@ -451,7 +453,7 @@ class YandexMusicSDK:
         upload_dir: typing.Optional[str] = None
     ) -> typing.Optional[TrackData]:
         """
-        Get track data from either track URL or ID with optimized parallel processing.
+        Get track data from either track URL or ID
         """
         if not self.is_init:
             await self.client.init()
