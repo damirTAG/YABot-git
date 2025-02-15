@@ -1,12 +1,14 @@
 import aiohttp, re
+import sqlite3, config
+from typing import Tuple, Optional
 from dataclasses import dataclass
 from functools import wraps
-from aiogram import types
-import sqlite3
 
-
+OPENAI_API_KEY = config.OPEN_AI_TOKEN
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 class SoundCloudSearchException(Exception):
     pass
+
 
 class Tools():
     def __init__(self) -> None:
@@ -49,7 +51,7 @@ class Tools():
     def log(command_name):
         def decorator(handler):
             @wraps(handler)
-            async def wrapper(message: types.Message, *args, **kwargs):
+            async def wrapper(message, *args, **kwargs):
                 user_id = message.from_user.id
                 username = message.from_user.username
                 first_name = message.from_user.first_name
@@ -71,6 +73,80 @@ class Tools():
                 return await handler(message, *args, **kwargs)
             return wrapper
         return decorator
+    
+    @staticmethod
+    def parse_currency_query(text: str) -> Optional[Tuple[float, str, str]]:
+        """Parse message text into amount, from_currency, and to_currency"""
+        # Remove extra spaces and convert to lowercase
+        text = ' '.join(text.lower().split())
+        
+        # Different regex patterns for matching
+        patterns = [
+            # Pattern for "100 USD RUB" format
+            r"^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)\s+([a-zA-Z]+)$",
+            # Pattern for "USD RUB" format (assuming amount=1)
+            r"^([a-zA-Z]+)\s+([a-zA-Z]+)$",
+            # Pattern for "100 USD" format (assuming to_currency=USD)
+            r"^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)$"
+        ]
+        
+        for pattern in patterns:
+            match = re.match(pattern, text)
+            if match:
+                groups = match.groups()
+                if len(groups) == 3:
+                    # Full pattern with amount and both currencies
+                    return float(groups[0]), groups[1], groups[2]
+                elif len(groups) == 2:
+                    if groups[0].isalpha():
+                        # Currency pair without amount
+                        return 1.0, groups[0], groups[1]
+                    else:
+                        # Amount and currency without target currency
+                        return float(groups[0]), groups[1], "usd"
+        
+        return None
+    
+    @staticmethod
+    async def generate_response(prompt: str) -> str:
+        """
+        Generate response from ChatGPT API
+        """
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Ты встроен в Ержан бота в Телеграме. Отвечай на вопросы юзеров, шути/подкалывай "
+                            "Можно обращаться на 'ты'. Будь иногда дерзким "
+                            "В ответах с кодом можно слегка токсичить. Если встречаешь вопросы по типу "
+                            "'кто такой сын миража', то напридумай какую нибудь абсурдную историю. "
+                            "Поддерживай многоязычность, отвечай на том языке на котором задан вопрос"
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            "max_tokens": 300  # Ограничение длины ответа
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(OPENAI_API_URL, headers=headers, json=data) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return result['choices'][0]['message']['content'].strip()
+                    else:
+                        return None
+        except Exception as e:
+            print(f"[chatgpt] Error generating response: {e}")
+            return "An error occurred while processing your request."
 
 @dataclass
 class ConsoleColors:
