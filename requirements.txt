@@ -1,4 +1,4 @@
-aiogram==2.25.1
+aiogram
 aiohttp
 aiosignal
 aiofiles
@@ -17,10 +17,13 @@ pycryptodomex
 pytz
 websockets
 yarl
-yt-dlp
+yt-dlp[default] --pre
 SpeechRecognition
 tinytag
 tqdm
 bs4
+pillow
+tenacity
 ffmpeg-python
 yandex_music
+aiograpi

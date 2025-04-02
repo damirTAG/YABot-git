@@ -3,23 +3,19 @@ import sqlite3, config
 from typing import Tuple, Optional
 from dataclasses import dataclass
 from functools import wraps
+from aiogram import types
 
-OPENAI_API_KEY = config.OPEN_AI_TOKEN
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
-class SoundCloudSearchException(Exception):
-    pass
 
 
 class Tools():
     def __init__(self) -> None:
-        """
-        HEADERS NOT WORKING, SO NOT USING NEED TO CHANGE
-        """
-        # self.headers = {
-        #     'User-Agent': 'Mozilla/5.0 (iPad; U; CPU OS 3_2 like Mac OS X; en-us) AppleWebKit/531.21.10 (KHTML, like Gecko) '
-        #                 'Version/4.0.4 Mobile/7B334b Safari/531.21.102011-10-16 20:23:10'
-        # }
-        pass
+        self.OPENAI_API_KEY = config.OPEN_AI_TOKEN
+        self.OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+        self.PLATFORM_PATTERNS = {
+            "TikTok": r"tiktok\.com",
+            "SoundCloud": r"soundcloud\.com",
+            "Instagram": r"instagram\.com",
+        }
 
     async def convert_share_urls(self, url: str):
         print('converting link...')
@@ -51,33 +47,59 @@ class Tools():
     def log(command_name):
         def decorator(handler):
             @wraps(handler)
-            async def wrapper(message, *args, **kwargs):
-                user_id = message.from_user.id
-                username = message.from_user.username
-                first_name = message.from_user.first_name
-                last_name = message.from_user.last_name
+            async def wrapper(update, *args, **kwargs):
+                user_id = None
+                chat_id = None
+                chat_type = None
+                username = None
+                first_name = None
+                last_name = None
+
+                if isinstance(update, types.Message): 
+                    user_id = update.from_user.id
+                    chat_id = update.chat.id
+                    chat_type = update.chat.type
+                    username = update.from_user.username
+                    first_name = update.from_user.first_name
+                    last_name = update.from_user.last_name
+                elif isinstance(update, types.CallbackQuery): 
+                    user_id = update.from_user.id
+                    chat_id = update.message.chat.id if update.message else None
+                    chat_type = update.message.chat.type if update.message else None
+                    username = update.from_user.username
+                    first_name = update.from_user.first_name
+                    last_name = update.from_user.last_name
+                elif isinstance(update, types.ChosenInlineResult):
+                    user_id = update.from_user.id
+                    username = update.from_user.username
+                    first_name = update.from_user.first_name
+                    last_name = update.from_user.last_name
+
+                if user_id is None:
+                    return await handler(update, *args, **kwargs)
 
                 conn = sqlite3.connect("stats.db")
                 cursor = conn.cursor()
 
-                # Добавляем пользователя, если его нет
-                cursor.execute("INSERT OR IGNORE INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)", 
-                            (user_id, username, first_name, last_name))
+                cursor.execute(
+                    "INSERT OR IGNORE INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)", 
+                    (user_id, username, first_name, last_name)
+                )
+                if chat_id and chat_type and chat_type != 'private':
+                    cursor.execute("INSERT OR IGNORE INTO chats (chat_id) VALUES (?)", (str(chat_id),))
 
-                # Логируем команду
                 cursor.execute("INSERT INTO commands (user_id, command) VALUES (?, ?)", (user_id, command_name))
-                
+
                 conn.commit()
                 conn.close()
 
-                return await handler(message, *args, **kwargs)
+                return await handler(update, *args, **kwargs)
             return wrapper
         return decorator
     
     @staticmethod
     def parse_currency_query(text: str) -> Optional[Tuple[float, str, str]]:
         """Parse message text into amount, from_currency, and to_currency"""
-        # Remove extra spaces and convert to lowercase
         text = ' '.join(text.lower().split())
         
         # Different regex patterns for matching
@@ -107,13 +129,12 @@ class Tools():
         
         return None
     
-    @staticmethod
-    async def generate_response(prompt: str) -> str:
+    async def generate_response(self, prompt: str) -> str:
         """
         Generate response from ChatGPT API
         """
         headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Authorization": f"Bearer {self.OPENAI_API_KEY}",
             "Content-Type": "application/json"
         }
         
@@ -122,10 +143,9 @@ class Tools():
             "messages": [
                 {
                     "role": "system",
-                    "content": "Ты встроен в Ержан бота в Телеграме. Отвечай на вопросы юзеров, шути/подкалывай "
-                            "Можно обращаться на 'ты'. Будь иногда дерзким "
-                            "В ответах с кодом можно слегка токсичить. Если встречаешь вопросы по типу "
-                            "'кто такой сын миража', то напридумай какую нибудь абсурдную историю. "
+                    "content": "Ты встроен в Ержан бота в Телеграме, твой создатель - Дамир. Ты помощник AI ассистент. "
+                            "Можно обращаться на 'ты' и шутить но не всегда, если понимаешь что "
+                            "вопрос серьезный то отвечай серьезно. Будь иногда дерзким. В ответах с кодом можно слегка токсичить. "
                             "Поддерживай многоязычность, отвечай на том языке на котором задан вопрос"
                 },
                 {
@@ -133,12 +153,12 @@ class Tools():
                     "content": prompt
                 }
             ],
-            "max_tokens": 300  # Ограничение длины ответа
+            "max_tokens": 300
         }
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(OPENAI_API_URL, headers=headers, json=data) as response:
+                async with session.post(self.OPENAI_API_URL, headers=headers, json=data) as response:
                     if response.status == 200:
                         result = await response.json()
                         return result['choices'][0]['message']['content'].strip()
@@ -147,6 +167,21 @@ class Tools():
         except Exception as e:
             print(f"[chatgpt] Error generating response: {e}")
             return "An error occurred while processing your request."
+
+    def parse_platforms(self, video_links):
+        platform_counts = {"TikTok": 0, "SoundCloud": 0, "Instagram": 0, "Yandex Music": 0}
+        
+        for link in video_links:
+            if link.isdigit():  # Yandex Music хранит ID, а не ссылки
+                platform_counts["Yandex Music"] += 1
+            else:
+                for platform, pattern in self.PLATFORM_PATTERNS.items():
+                    if re.search(pattern, link):
+                        platform_counts[platform] += 1
+                        break
+        
+        return platform_counts
+
 
 @dataclass
 class ConsoleColors:
@@ -191,6 +226,25 @@ def init_db():
             message TEXT,
             sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_saved (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            file_id INTEGER,
+            type TEXT,
+            saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 

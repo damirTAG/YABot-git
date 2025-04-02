@@ -2,6 +2,7 @@ from aiohttp import ClientSession
 from typing import Optional, Dict, NamedTuple
 from datetime import datetime, timedelta
 
+
 def get_change_emoji(change: float) -> str:
     """Return appropriate emoji based on price change"""
     if change > 5:
@@ -143,3 +144,7 @@ class FiatAPI:
         current_rate = self.rates[to_currency] / self.rates[from_currency]
         
         return current_rate
+    
+async def init_coins_apis():
+    await CryptoAPI().init_session()
+    await FiatAPI().init_session()

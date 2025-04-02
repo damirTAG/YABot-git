@@ -16,6 +16,10 @@ from .coins import (
     FiatAPI, CryptoAPI, get_change_emoji
 )
 
+from .ytsdk import YouTubeSDK, VideoMetadata
+
+from .inst import get_video_direct_link, login_user
+
 __all__ = [
     'Converter',
     'TikTok',
@@ -29,5 +33,9 @@ __all__ = [
     'ChartData',
     'FiatAPI',
     'CryptoAPI',
-    'get_change_emoji'
+    'get_change_emoji',
+    'YouTubeSDK',
+    'VideoMetadata',
+    'get_video_direct_link',
+    'login_user'
 ]
