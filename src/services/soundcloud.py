@@ -35,11 +35,11 @@ class SoundCloudTool:
 
     def __init__(self):
         self.ytdl = yt_dlp.YoutubeDL(self.YTDL_OPTS)
-        self.loop = asyncio.get_event_loop()
 
     async def search_tracks(self, query: str, count: int = 10) -> List[Track]:
         search_query = f"scsearch{count}:{query}"
-        data = await self.loop.run_in_executor(None, self.ytdl.extract_info, search_query, False)
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(None, self.ytdl.extract_info, search_query, False)
         
         tracks = []
         if "entries" in data:
@@ -52,7 +52,8 @@ class SoundCloudTool:
         return tracks
 
     async def get_track(self, track_url: str) -> Track:
-        data = await self.loop.run_in_executor(None, self.ytdl.extract_info, track_url, False)
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(None, self.ytdl.extract_info, track_url, False)
         return self._track_instance(data)
 
     async def save_track(self, track: Track, output_folder: str = "audio") -> str:

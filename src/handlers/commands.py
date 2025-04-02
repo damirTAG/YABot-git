@@ -55,18 +55,22 @@ async def rate(message: types.Message):
 @log('INFO')
 async def info_handler(message: types.Message):    
     try:
-        # Get video stats
+        # Получаем статистику по видео
         results = db.execute_query("SELECT video_link FROM video_cache", db_path='cache.db')
         video_links = [row[0] for row in results]
         total_files = len(video_links)
+        logger.info(f"Total video files: {total_files}")
         
-        # Calculate platform statistics
+        # Статистика по платформам
         platform_counts = tools.parse_platforms(video_links)
         sorted_platforms = sorted(platform_counts.items(), key=lambda x: x[1], reverse=True)
-        most_downloaded, most_downloaded_count = sorted_platforms.pop(0)
+        most_downloaded, most_downloaded_count = sorted_platforms.pop(0, (None, 0))  # Обработаем случай, если список пуст
         others = "\n".join([f"• {platform}: {count:,} files" for platform, count in sorted_platforms])
-    
+        
+        logger.info(f"Most downloaded platform: {most_downloaded} with {most_downloaded_count} downloads")
+        logger.info(f"Other platforms: {others}")
 
+        # Статистика по запросам
         requests_stats = db.execute_query(""" 
             WITH daily_counts AS (
                 SELECT DATE(used_at) as date, COUNT(*) as count
@@ -82,28 +86,34 @@ async def info_handler(message: types.Message):
         avg_requests, max_requests, last_active = requests_stats
         avg_requests = avg_requests or 0
         max_requests = max_requests or 0
-        
-        # Get AI and currency converter stats
-        ai_cur_stats = db.execute_query("""
+
+        logger.info(f"Avg requests per day: {avg_requests}, Max requests: {max_requests}, Last active: {last_active}")
+
+        # Статистика по ИИ и конвертеру валют
+        ai_cur_stats = db.execute_query(""" 
             SELECT command, COUNT(*) as count
             FROM commands
             WHERE command IN ('ASK', 'CHATGPT', 'SPEECH_REC', 'COINS_CONVERTER')
             GROUP BY command
         """)
         feature_stats = dict(ai_cur_stats)
-        
+
         ai_answers = feature_stats.get('ASK', 0) + feature_stats.get('CHATGPT', 0)
         speech_count = feature_stats.get('SPEECH_REC', 0)
         currency_conversions = feature_stats.get('COINS_CONVERTER', 0)
-        
-        # Get user and chat statistics
+
+        logger.info(f"AI answers: {ai_answers}, Speech count: {speech_count}, Currency conversions: {currency_conversions}")
+
+        # Статистика по пользователям и чатам
         total_users = db.execute_query("SELECT COUNT(DISTINCT user_id) FROM users")[0]
-        
         total_chats = db.execute_query("SELECT COUNT(DISTINCT chat_id) FROM chats")[0]
-        
-        # Format the chat info part
+
+        logger.info(f"Total users: {total_users}, Total chats: {total_chats}")
+
+        # Форматируем информацию о чатах
         chats_info = f"and {total_chats:,} group chats " if total_chats > 4 else ""
-        
+
+        # Формируем ответ
         response = INFO.format(
             most_downloaded=most_downloaded,
             most_downloaded_count=most_downloaded_count,
@@ -111,15 +121,17 @@ async def info_handler(message: types.Message):
             ai_answers=ai_answers,
             speech_count=speech_count,
             avg_requests=avg_requests,
-            currency_conversions=currency_conversions,
+            currency_conv=currency_conversions,
             total_files=total_files,
             total_users=total_users,
             chats_info=chats_info
         )
 
+        logger.info(f"Response: {response}")
         
+        # Отправляем сообщение с результатами
         await message.reply(response)
-        
+
     except Exception as e:
         logger.error(f"Error in info_handler: {e}")
         await message.reply("Whoops! My stats calculator just did a backflip 🤸‍♂️ Try again in a bit! 😅")
@@ -204,6 +216,8 @@ async def ym_command_handler(message: types.Message, command: CommandObject):
             text='❌ Close',
             callback_data='close'
         )
+        await search_msg.delete()
+        await message.reply(f'<b>{args.capitalize()}</b>', reply_markup=keyboard_builder.as_markup())
 
 
 @router.message(Command('sc'))
@@ -243,10 +257,9 @@ async def soundsearch(message: types.Message, command: CommandObject):
 
         keyboard_builder.button(text="❌ Close", callback_data="close")
         keyboard_builder.adjust(1)
-        keyboard = keyboard_builder.as_markup()
 
         await search_msg.delete()
-        await message.reply(f'<b>{args.capitalize()}</b>', reply_markup=keyboard)
+        await message.reply(f'<b>{args.capitalize()}</b>', reply_markup=keyboard_builder.as_markup())
 
     except Exception as e:
         logger.error(f"SoundCloud search error: {e}")
