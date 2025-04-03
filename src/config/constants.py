@@ -47,23 +47,8 @@ INFO            = (
     "• Total files delivered: {total_files:,}\n"
     "• Currently serving {total_users:,} users {chats_info}\n\n"
     "❤️ Thanks for using the bot! Any suggestions? Feel free to contact @damirtag"
-    # f"\n\n<i>Bot code available on</i> <b><a href='{GH_REPO}'>GitHub</a></b>"
+    f"\n\n<i>Bot's source-code available on</i> <b><a href='{GH_REPO}'>GitHub</a></b>"
 )
-
-# -- PATTERNS --
-import re
-
-PATTERNS = {
-    "tiktok": r'(https?://(?:www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)/.*)',
-    "soundcloud": r'(https?://(?:www\.)?soundcloud\.com/[^\s]+)',
-    "yandex_music": r"https://music\.yandex\.(?:ru|com|kz)/album/\d+/track/\d+",
-    "youtube": re.compile(
-        r"(?:https?:\/\/)?(?:www\.)?"
-        r"(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)"
-        r"([\w-]{11})"
-    ),
-    "twitch_vk": r'(?:https?://)?(?:www\.)?(?:vk\.com/clip|twitch\.tv/)',
-}
 
 # -- VARS -- 
 MAX_GPT_QUERY_LENGTH: int = 150

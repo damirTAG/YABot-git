@@ -2,8 +2,8 @@ import sqlite3, logging
 
 from typing                 import List, Tuple, Dict, Any
 from contextlib             import closing
-from config.constants     import CACHE_CHAT
-from utils                import ConsoleColors
+from config.constants       import CACHE_CHAT
+from utils                  import ConsoleColors
 
 
 class DB_actions():

@@ -2,7 +2,7 @@ import logging
 import sys
 from logging.handlers   import RotatingFileHandler
 
-from .settings import LOGS_DIR, DEBUG
+from .settings          import LOGS_DIR, DEBUG
 
 def setup_logging():
     # Create logs directory if it doesn't exist
