@@ -277,10 +277,10 @@ class DB_actions():
             chat_id: Telegram chat ID
         """
         query = '''
-        INSERT INTO chats (chat_id)
+        INSERT OR IGNORE INTO chats (chat_id)
         VALUES (?)
         '''
-        self.execute_query(query, (chat_id))
+        self.execute_query(query, (chat_id,))
     
     def log_command(self, user_id: int, command: str) -> None:
         """
