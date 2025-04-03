@@ -47,7 +47,7 @@ INFO            = (
     "• Total files delivered: {total_files:,}\n"
     "• Currently serving {total_users:,} users {chats_info}\n\n"
     "❤️ Thanks for using the bot! Any suggestions? Feel free to contact @damirtag"
-    f"\n\n<i>Bot code available on</i> <b><a href='{GH_REPO}'>GitHub</a></b>"
+    # f"\n\n<i>Bot code available on</i> <b><a href='{GH_REPO}'>GitHub</a></b>"
 )
 
 # -- PATTERNS --

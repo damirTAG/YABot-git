@@ -22,7 +22,7 @@ from config.constants   import (
 )
 from config.enums       import Patterns
 from database.repo      import DB_actions
-from database.cache     import Base as basecache
+from database.cache     import cache
 
 from services.yandexmusic   import YandexMusicSDK, TrackData
 from services.soundcloud    import SoundCloudTool
@@ -34,7 +34,6 @@ router  = Router()
 
 tools   = Tools()
 db      = DB_actions()
-cache   = basecache()
 
 # -- services --
 sc = SoundCloudTool()
@@ -53,13 +52,13 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
         chat_id = message.chat.id
         match = re.search(Patterns.TIKTOK.value, message.text)
         if match:
-            link: str = match.group(1)
+            link: str = match.group(0)
 
         try:
             logger.info(
                 f"(Chat: [ID]: {event_chat.id}, [Title]: {event_chat.title}) "
                 f"[Username]: {message.from_user.username}, "
-                f"Link: {message.text}")
+                f"Link: {link}")
         except AttributeError:
             pass
         
@@ -386,7 +385,7 @@ async def soundload(message: types.Message, bot: Bot):
         await bot.send_chat_action(chat_id, 'record_video')
         match = re.search(Patterns.SOUNDCLOUD.value, message.text)
         if match:
-            link = match.group(1)
+            link = match.group(0)
             if link and 'https://on.' in link:
                 link = await tools.convert_share_urls(link)
             current_date = datetime.now(pytz.timezone('Asia/Almaty'))

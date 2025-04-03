@@ -160,7 +160,7 @@ class DB_actions():
             with closing(self._get_connection(db_path)) as conn:
                 with closing(conn.cursor()) as cursor:
                     cursor.execute(query, parameters)
-                    if query.strip().upper().startswith(("SELECT", "PRAGMA")):
+                    if query.strip().upper().startswith(("SELECT", "PRAGMA", "WITH")):
                         return cursor.fetchall()
                     else:
                         conn.commit()

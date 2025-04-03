@@ -1,10 +1,12 @@
-import re
+import re, logging
 
 from dataclasses        import dataclass
 from aiogram            import types, filters
 
 import aiohttp, re
 from typing import Tuple, Optional
+
+logger = logging.getLogger()
 
 class Tools():
     def __init__(self) -> None:
@@ -78,18 +80,21 @@ class Tools():
             return False
 
     def parse_platforms(self, video_links):
-        platform_counts = {"TikTok": 0, "SoundCloud": 0, "Instagram": 0, "Yandex Music": 0}
+        try:
+            platform_counts = {"TikTok": 0, "SoundCloud": 0, "Instagram": 0, "Yandex Music": 0}
         
-        for link in video_links:
-            if link.isdigit():  # Yandex Music хранит ID, а не ссылки
-                platform_counts["Yandex Music"] += 1
-            else:
-                for platform, pattern in self.PLATFORM_PATTERNS.items():
-                    if re.search(pattern, link):
-                        platform_counts[platform] += 1
-                        break
-        
-        return platform_counts
+            for link in video_links:
+                if link.isdigit():  # Yandex Music хранит ID, а не ссылки
+                    platform_counts["Yandex Music"] += 1
+                else:
+                    for platform, pattern in self.PLATFORM_PATTERNS.items():
+                        if re.search(pattern, link):
+                            platform_counts[platform] += 1
+                            break
+            
+            return platform_counts
+        except Exception as e:
+            logger.error(f'Error in parse_platforms: {e}')
 
 class YANDEX_MUSIC_TRACK_CAPTION:
     def __init__(self, track):

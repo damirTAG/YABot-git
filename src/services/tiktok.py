@@ -284,9 +284,9 @@ class TikTok:
 
             async def main():
                 async with TikTok() as tt:
-                    video = await tiktok.download("https://www.tiktok.com/@adasf4v/video/7367017049136172320", hd=True)
+                    video = await tt.download("https://www.tiktok.com/@adasf4v/video/7367017049136172320", hd=True)
                     # or
-                    photo = await tiktok.download('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232', 'tiktok_images')
+                    photo = await tt.download('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232', 'tiktok_images')
                     print(f"Downloaded video: {video.media}")
                     print(f"Images downloaded to: {photo.dir_name}")
 

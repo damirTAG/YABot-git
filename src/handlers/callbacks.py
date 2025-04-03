@@ -8,7 +8,7 @@ from config.constants       import (
     COOL_PHRASES, SAVE_BUTTON, SAVED, SAVED_BUTTON
 )
 from database.repo          import DB_actions
-from database.cache         import Base as basecache
+from database.cache         import cache
 
 from services.yandexmusic   import YandexMusicSDK, TrackData
 from services.soundcloud    import SoundCloudTool
@@ -17,7 +17,6 @@ logger  = logging.getLogger()
 router  = Router()
 
 db      = DB_actions()
-cache   = basecache()
 
 tools   = Tools()
 sc      = SoundCloudTool()
@@ -78,17 +77,18 @@ async def save(call: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("yandex_"))
 async def download_yandex_track(callback_query: types.CallbackQuery, bot: Bot):
-    track_id = callback_query.data[len("yandex_"):]
-    track: TrackData = cache.get_from_cache("yandexmusic", track_id)
+    track_id = callback_query.data.removeprefix("yandex_")
+    track = cache.get_from_cache("yandexmusic", int(track_id))
     file_path = None
 
     if not track:
         return await bot.send_message(callback_query.from_user.id, "🚫 Track not found.")
     msg = callback_query.message  # get Message
     try:
-        from_chat_id, from_message_id = db.get_cached_media(url=track.id)
+        results = db.get_cached_media(url=track.id)
         
-        if from_chat_id and from_message_id:
+        if results:
+            from_chat_id, from_message_id = results
             await bot.copy_message(
                 chat_id=callback_query.message.chat.id,
                 from_chat_id=from_chat_id,
@@ -163,7 +163,7 @@ async def download_yandex_track(callback_query: types.CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("soundcl_"))
 async def download_soundcl_track(callback_query: types.CallbackQuery, bot: Bot):
-    track_id = callback_query.data[len("soundcl_"):]  # get track id
+    track_id = callback_query.data.removeprefix("soundcl_")  # get track id
     track = cache.get_from_cache("soundcloud", track_id)
     file_path = None
 
@@ -171,9 +171,10 @@ async def download_soundcl_track(callback_query: types.CallbackQuery, bot: Bot):
         return await bot.send_message(callback_query.from_user.id, "🚫 Track not found.")
     msg = callback_query.message  # get Message
     try:
-        from_chat_id, from_message_id = db.get_cached_media(url=track.track_id)
+        results = db.get_cached_media(url=track.track_id)
         
-        if from_chat_id and from_message_id:
+        if results:
+            from_chat_id, from_message_id = results
             await bot.copy_message(
                 chat_id=callback_query.message.chat.id,
                 from_chat_id=from_chat_id,
@@ -204,7 +205,7 @@ async def download_soundcl_track(callback_query: types.CallbackQuery, bot: Bot):
             caption=caption,
             title=track.title,
             performer=track.artists,
-            duration=track.duration,
+            duration=int(track.duration),
             reply_markup=SAVE_BUTTON if callback_query.message.chat.type == 'private' else None,
             reply_to_message_id=callback_query.message.reply_to_message.message_id if callback_query.message.reply_to_message else None
         )

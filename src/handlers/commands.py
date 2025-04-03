@@ -11,7 +11,7 @@ from utils              import Tools
 from utils.decorators   import log
 from services.openai    import generate_response
 from database.repo      import DB_actions
-from database.cache     import Base as cachebase
+from database.cache     import cache
 from config.constants   import (
     HELP,
     INFO,
@@ -55,22 +55,16 @@ async def rate(message: types.Message):
 @log('INFO')
 async def info_handler(message: types.Message):    
     try:
-        # Получаем статистику по видео
         results = db.execute_query("SELECT video_link FROM video_cache", db_path='cache.db')
         video_links = [row[0] for row in results]
         total_files = len(video_links)
-        logger.info(f"Total video files: {total_files}")
-        
-        # Статистика по платформам
+
         platform_counts = tools.parse_platforms(video_links)
         sorted_platforms = sorted(platform_counts.items(), key=lambda x: x[1], reverse=True)
-        most_downloaded, most_downloaded_count = sorted_platforms.pop(0, (None, 0))  # Обработаем случай, если список пуст
-        others = "\n".join([f"• {platform}: {count:,} files" for platform, count in sorted_platforms])
-        
-        logger.info(f"Most downloaded platform: {most_downloaded} with {most_downloaded_count} downloads")
-        logger.info(f"Other platforms: {others}")
+        most_downloaded, most_downloaded_count = sorted_platforms.pop(0)
 
-        # Статистика по запросам
+        others = "\n".join([f"• {platform}: {count:,} files" for platform, count in sorted_platforms])
+
         requests_stats = db.execute_query(""" 
             WITH daily_counts AS (
                 SELECT DATE(used_at) as date, COUNT(*) as count
@@ -83,13 +77,14 @@ async def info_handler(message: types.Message):
                 DATE(MAX(date)) as last_active_date
             FROM daily_counts;
         """) or [(None, None, None)]
-        avg_requests, max_requests, last_active = requests_stats
+        if requests_stats and len(requests_stats) > 0:
+            avg_requests, max_requests, last_active = requests_stats[0]
+        else:
+            avg_requests, max_requests, last_active = None, None, None
+
         avg_requests = avg_requests or 0
         max_requests = max_requests or 0
 
-        logger.info(f"Avg requests per day: {avg_requests}, Max requests: {max_requests}, Last active: {last_active}")
-
-        # Статистика по ИИ и конвертеру валют
         ai_cur_stats = db.execute_query(""" 
             SELECT command, COUNT(*) as count
             FROM commands
@@ -102,18 +97,11 @@ async def info_handler(message: types.Message):
         speech_count = feature_stats.get('SPEECH_REC', 0)
         currency_conversions = feature_stats.get('COINS_CONVERTER', 0)
 
-        logger.info(f"AI answers: {ai_answers}, Speech count: {speech_count}, Currency conversions: {currency_conversions}")
+        total_users = db.execute_query("SELECT COUNT(DISTINCT user_id) FROM users")[0][0]
+        total_chats = db.execute_query("SELECT COUNT(DISTINCT chat_id) FROM chats")[0][0]
 
-        # Статистика по пользователям и чатам
-        total_users = db.execute_query("SELECT COUNT(DISTINCT user_id) FROM users")[0]
-        total_chats = db.execute_query("SELECT COUNT(DISTINCT chat_id) FROM chats")[0]
+        chats_info = f"and {total_chats:,} group chats "
 
-        logger.info(f"Total users: {total_users}, Total chats: {total_chats}")
-
-        # Форматируем информацию о чатах
-        chats_info = f"and {total_chats:,} group chats " if total_chats > 4 else ""
-
-        # Формируем ответ
         response = INFO.format(
             most_downloaded=most_downloaded,
             most_downloaded_count=most_downloaded_count,
@@ -127,9 +115,6 @@ async def info_handler(message: types.Message):
             chats_info=chats_info
         )
 
-        logger.info(f"Response: {response}")
-        
-        # Отправляем сообщение с результатами
         await message.reply(response)
 
     except Exception as e:
@@ -186,7 +171,6 @@ async def ask_handler(m: types.Message, command: CommandObject):
 from services.yandexmusic   import YandexMusicSDK, TrackData
 from services.soundcloud    import SoundCloudTool
 
-cache = cachebase()
 sc = SoundCloudTool()
 
 @router.message(Command('ym'))
@@ -208,7 +192,7 @@ async def ym_command_handler(message: types.Message, command: CommandObject):
             cache.add_to_cache("yandexmusic", track.id, track)
             
             keyboard_builder.button(
-                text=f"{track.artists} - {track.title}", 
+                text=f"{track.title} - {track.artists}", 
                 callback_data=f"yandex_{track.id}"
             )
         
@@ -216,6 +200,7 @@ async def ym_command_handler(message: types.Message, command: CommandObject):
             text='❌ Close',
             callback_data='close'
         )
+        keyboard_builder.adjust(1)
         await search_msg.delete()
         await message.reply(f'<b>{args.capitalize()}</b>', reply_markup=keyboard_builder.as_markup())
 
@@ -251,7 +236,7 @@ async def soundsearch(message: types.Message, command: CommandObject):
             cache.add_to_cache("soundcloud", track.track_id, track)
 
             keyboard_builder.button(
-                text=f"{track.artists} - {track.title}",
+                text=f"{track.title} - {track.artists}",
                 callback_data=f"soundcl_{track.track_id}"
             )
 
