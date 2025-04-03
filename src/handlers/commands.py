@@ -115,7 +115,7 @@ async def info_handler(message: types.Message):
             chats_info=chats_info
         )
 
-        await message.reply(response)
+        await message.reply(response, disable_web_page_preview=True)
 
     except Exception as e:
         logger.error(f"Error in info_handler: {e}")

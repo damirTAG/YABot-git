@@ -13,6 +13,8 @@ logger  = logging.getLogger()
 
 @router.message(Command("admin"))
 async def get_stats(message: types.Message):
+    if message.from_user.id != DAMIR_USER_ID:
+        return await message.reply("🚫 You can't use this command.")
     stats = db.get_stats()
 
     stats_text = (
@@ -54,7 +56,7 @@ async def send_file(
     message: types.Message, command: CommandObject, bot: Bot
 ):
     if message.from_user.id != DAMIR_USER_ID:
-        return await message.reply("🚫 You are not authorized to use this command.")
+        return await message.reply("🚫 You can't use this command.")
     
     args = command.args
     

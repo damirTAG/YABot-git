@@ -48,11 +48,11 @@ DB_PATH = get_env("DB_PATH", "bot_settings.db")
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent
-TEMP_DIR = BASE_DIR / "temp"
+# TEMP_DIR = BASE_DIR / "temp"
 LOGS_DIR = BASE_DIR / "logs"
 
 # Ensure directories exist
-TEMP_DIR.mkdir(exist_ok=True)
+# TEMP_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 # Feature flags
