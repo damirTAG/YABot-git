@@ -188,6 +188,87 @@ class DB_actions():
         '''
         self.execute_query(query, (user_id, username, first_name, last_name, username, first_name, last_name))
     
+    def get_all_users(self, limit=10, offset=0):
+        """Get users with pagination"""
+        with closing(self._get_connection('stats.db')) as conn:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute("""
+                    SELECT user_id, username, first_name, last_name, joined_at
+                    FROM users
+                    ORDER BY joined_at DESC
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
+                
+                users = []
+                for row in cursor.fetchall():
+                    users.append({
+                        'user_id': row[0],
+                        'username': row[1],
+                        'first_name': row[2],
+                        'last_name': row[3],
+                        'joined_at': row[4]
+                    })
+                    
+                return users
+            
+    def get_total_users_count(self):
+        """Get total number of users"""
+        with closing(self._get_connection('stats.db')) as conn:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute("SELECT COUNT(*) FROM users")
+                return cursor.fetchone()[0]
+            
+    def get_user_details(self, user_id):
+        """Get detailed information about a specific user"""
+        with closing(self._get_connection('stats.db')) as conn:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute("""
+                    SELECT user_id, username, first_name, last_name, joined_at
+                    FROM users
+                    WHERE user_id = ?
+                """, (user_id,))
+                        
+                user_row = cursor.fetchone()
+                if not user_row:
+                    return None
+
+                cursor.execute("""
+                    SELECT COUNT(*) FROM commands
+                    WHERE user_id = ?
+                """, (user_id,))
+                command_count = cursor.fetchone()[0]
+                        
+                cursor.execute("""
+                    SELECT COUNT(*) FROM user_saved
+                    WHERE user_id = ?
+                """, (user_id,))
+                saved_files = cursor.fetchone()[0]
+
+                cursor.execute("""
+                        SELECT command, used_at FROM commands
+                    WHERE user_id = ?
+                    ORDER BY used_at DESC
+                    LIMIT 5
+                """, (user_id,))
+                        
+                recent_commands = []
+                for row in cursor.fetchall():
+                    recent_commands.append({
+                        'command': row[0],
+                        'used_at': row[1]
+                    })
+                        
+                return {
+                    'user_id': user_row[0],
+                    'username': user_row[1],
+                    'first_name': user_row[2],
+                    'last_name': user_row[3],
+                    'joined_at': user_row[4],
+                    'command_count': command_count,
+                    'saved_files': saved_files,
+                    'recent_commands': recent_commands
+                }
+
     def add_chat(self, chat_id: int) -> None:
         """
         Add or update a chat in the database.

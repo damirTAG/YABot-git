@@ -52,6 +52,7 @@ INFO            = (
 
 # -- VARS -- 
 MAX_GPT_QUERY_LENGTH: int = 150
+ADMIN_USERS_PER_PAGE: int = 10
 CHATGPT_ROLE: str = """
 Ты встроен в Ержан бота в Телеграме, твой создатель - Дамир. Ты помощник AI ассистент.\n
 Можно обращаться на 'ты' и шутить но не всегда, если понимаешь что\n
@@ -113,12 +114,9 @@ CLOSE_BUTTON            = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="❌ Close", callback_data="close")]
 ])
 
-REFRESH_ADMIN_BUTTON    = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh_admin")]
-])
-
-REFRESH_BUTTON          = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh")]
+ADMIN_KEYBOARD          = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh_admin")],
+    [InlineKeyboardButton(text="👥 View All Users", callback_data="view_users:0")]
 ])
 
 GENERATING_BUTTON       = InlineKeyboardMarkup(inline_keyboard=[

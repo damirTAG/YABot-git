@@ -1,11 +1,13 @@
-import logging, pytz, asyncio, json
+import logging, asyncio, json, pytz
 
 from aiogram            import Bot, Router, F, types
 from aiogram.filters    import Command, CommandObject
+
 from datetime           import datetime
 
 from database.repo      import DB_actions
-from config.constants   import REFRESH_BUTTON as refresh, DAMIR_USER_ID, UPDATE_NOTIFY
+from utils.helpers      import generate_stats_text, show_users_page
+from config.constants   import ADMIN_KEYBOARD, DAMIR_USER_ID, UPDATE_NOTIFY
 
 router  = Router()
 db      = DB_actions()
@@ -15,41 +17,84 @@ logger  = logging.getLogger()
 async def get_stats(message: types.Message):
     if message.from_user.id != DAMIR_USER_ID:
         return await message.reply("🚫 You can't use this command.")
-    stats = db.get_stats()
+    
+    stats       = db.get_stats()
+    stats_text  = generate_stats_text(stats)
 
-    stats_text = (
-        f"👥 Users: {stats['user_count']}\n"
-        f"💬 Chats: {stats['chat_count']}\n"
-        f"📂 Saved files: {stats['total_saved_files']}\n\n"
-        
-        f"<b>Top Commands:</b>\n"
+    await message.reply(stats_text, reply_markup=ADMIN_KEYBOARD)
+
+@router.message(Command("users"))
+async def view_users_command(message: types.Message):
+    if message.from_user.id != DAMIR_USER_ID:
+        return await message.reply("🚫 You can't use this command.")
+    
+    await show_users_page(message, page=0)
+
+# Callback handlers
+@router.callback_query(F.data == "refresh_admin")
+async def refresh_stats(callback_query: types.CallbackQuery):
+    if callback_query.from_user.id != DAMIR_USER_ID:
+        return await callback_query.answer("🚫 You can't use this feature.", show_alert=True)
+
+    stats       = db.get_stats()
+    stats_text  = generate_stats_text(stats)
+
+    await callback_query.message.delete()
+
+    await callback_query.message.answer(
+        stats_text,
+        reply_markup=ADMIN_KEYBOARD
     )
     
-    for command, count in stats['top_commands']:
-        stats_text += f"/{command}: {count}\n"
-        
-    stats_text += "\n👤 <b>TOP-10 last active users:</b>\n"
-    for user in stats['recent_users']:
-        username = f"@{user[0]}" if user[0] else f"{user[1] or ''} {user[2] or ''}".strip()
-        last_used = user[3]
-        last_used_utc = datetime.strptime(user[4], "%Y-%m-%d %H:%M:%S")  
-        last_used_oral = last_used_utc.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Etc/GMT-5')).strftime("%Y-%m-%d %H:%M:%S")
+    await callback_query.answer("Stats updated!")
 
-        stats_text += f" - {username} (<code>/{last_used}</code>: {last_used_oral})\n"
+@router.callback_query(F.data.startswith("view_users:"))
+async def users_pagination_callback(callback_query: types.CallbackQuery):
+    if callback_query.from_user.id != DAMIR_USER_ID:
+        return await callback_query.answer("🚫 You can't use this feature.", show_alert=True)
+    
+    page = int(callback_query.data.split(':')[1])
+    await show_users_page(callback_query.message, page, is_edit=True)
+    await callback_query.answer()
 
-    stats_text += "\n🔥 <b>TOP-10 most active:</b>\n"
-    for user in stats['active_users']:
-        username = f"@{user[0]}" if user[0] else f"{user[1] or ''} {user[2] or ''}".strip()
-        command_count = user[3]
-        stats_text += f" - {username}: {command_count} команд\n"
-
-    stats_text += "\n💾 <b>TOP-10 users by saved files:</b>\n"
-    for user in stats['top_savers']:
-        username = f"@{user[0]}" if user[0] else f"{user[1] or ''} {user[2] or ''}".strip()
-        file_count = user[3]
-        stats_text += f" - {username}: {file_count} файлов\n"
-
-    await message.reply(stats_text, reply_markup=refresh)
+@router.callback_query(F.data.startswith("user_details:"))
+async def user_details_callback(callback_query: types.CallbackQuery):
+    if callback_query.from_user.id != DAMIR_USER_ID:
+        return await callback_query.answer("🚫 You can't use this feature.", show_alert=True)
+    
+    user_id = int(callback_query.data.split(':')[1])
+    page = int(callback_query.data.split(':')[2])
+    
+    user_details = db.get_user_details(user_id)
+    
+    if not user_details:
+        await callback_query.answer("User not found.", show_alert=True)
+        return
+    
+    joined_at       = datetime.strptime(user_details['joined_at'], "%Y-%m-%d %H:%M:%S")
+    joined_at_oral  = joined_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Etc/GMT-5')).strftime("%Y-%m-%d %H:%M:%S")
+    
+    details_text = (
+        f"👤 <b>User Details</b>\n\n"
+        f"ID: <code>{user_details['user_id']}</code>\n"
+        f"Username: {('@' + user_details['username']) if user_details['username'] else 'Not set'}\n"
+        f"Name: {user_details['first_name'] or ''} {user_details['last_name'] or ''}\n"
+        f"Joined: {joined_at_oral}\n\n"
+        f"Commands used: {user_details['command_count']}\n"
+        f"Files saved: {user_details['saved_files']}\n\n"
+        f"<b>Last 5 commands:</b>\n"
+    )
+    
+    for cmd in user_details['recent_commands']:
+        cmd_time = datetime.strptime(cmd['used_at'], "%Y-%m-%d %H:%M:%S")
+        cmd_time_oral = cmd_time.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Etc/GMT-5')).strftime("%Y-%m-%d %H:%M:%S")
+        details_text += f"/{cmd['command']} - {cmd_time_oral}\n"
+    
+    back_button = types.InlineKeyboardButton(text="« Back to Users", callback_data=f"view_users:{page}")
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+    
+    await callback_query.message.edit_text(details_text, reply_markup=keyboard)
+    await callback_query.answer()
 
 @router.message(Command("get"))
 async def send_file(

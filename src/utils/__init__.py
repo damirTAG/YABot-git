@@ -2,9 +2,9 @@ import re, logging
 
 from dataclasses        import dataclass
 from aiogram            import types, filters
+from typing             import Tuple, Optional
 
-import aiohttp, re
-from typing import Tuple, Optional
+import aiohttp
 
 logger = logging.getLogger()
 
@@ -95,6 +95,7 @@ class Tools():
             return platform_counts
         except Exception as e:
             logger.error(f'Error in parse_platforms: {e}')
+
 
 class YANDEX_MUSIC_TRACK_CAPTION:
     def __init__(self, track):
