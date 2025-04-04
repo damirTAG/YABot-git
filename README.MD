@@ -1,3 +1,5 @@
-# yerzhanbot-git
+# Yerzhan
 
-### For controll versions of <a target="_blank" href="https://t.me/yerzhanakh_bot">Telegram Bot</a>
+## Telegram Media Bot
+
+#### Link - https://t.me/yerzhanakh_bot

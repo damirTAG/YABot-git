@@ -1,4 +1,4 @@
-import logging, asyncio, json, pytz
+import asyncio, json, pytz
 
 from aiogram            import Bot, Router, F, types
 from aiogram.filters    import Command, CommandObject
@@ -11,7 +11,6 @@ from config.constants   import ADMIN_KEYBOARD, DAMIR_USER_ID, UPDATE_NOTIFY
 
 router  = Router()
 db      = DB_actions()
-logger  = logging.getLogger()
 
 @router.message(Command("admin"))
 async def get_stats(message: types.Message):

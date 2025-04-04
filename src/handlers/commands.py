@@ -1,4 +1,4 @@
-import logging, time
+import time
 
 from aiogram                import Router, types
 from aiogram.filters        import Command, CommandStart, CommandObject
@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from random             import randrange
 
+from config             import logger
 from utils              import Tools
 from utils.decorators   import log
 from services.openai    import generate_response
@@ -24,7 +25,6 @@ from config.constants   import (
 
 router  = Router()
 db      = DB_actions()
-logger  = logging.getLogger()
 tools   = Tools()
 
 

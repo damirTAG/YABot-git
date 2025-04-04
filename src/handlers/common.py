@@ -1,5 +1,3 @@
-import logging
-
 from aiogram            import Router, types
 
 from utils              import RegexFilter, Tools
@@ -8,7 +6,6 @@ from services.coins     import FiatAPI, CryptoAPI, get_change_emoji
 
 router      = Router()
 tools       = Tools()
-logger      = logging.getLogger()
 crypto_api  = CryptoAPI()
 fiat_api    = FiatAPI()
 

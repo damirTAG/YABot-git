@@ -1,8 +1,9 @@
-import logging, uuid, time
+import uuid, time
 
 from aiogram            import Router, types, Bot
-from aiogram.types          import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types      import InlineKeyboardButton, InlineKeyboardMarkup
 
+from config             import logger
 from utils.decorators   import log
 from config.constants   import (
     MAX_GPT_QUERY_LENGTH,
@@ -13,7 +14,6 @@ from database.repo      import DB_actions
 from services.openai    import generate_response
 
 
-logger  = logging.getLogger()
 router  = Router()
 db      = DB_actions()
 
@@ -93,7 +93,7 @@ async def chatgpt_chosen_inline_handler(chosen_inline_query: types.ChosenInlineR
         del user_queries[result_id]
 
     except Exception as e:
-        logging.error(f"Error in chosen inline handler: {e}")
+        logger.error(f"Error in chosen inline handler: {e}")
 
 # Fix for general inline handler
 @router.inline_query()

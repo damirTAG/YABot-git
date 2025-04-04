@@ -1,7 +1,5 @@
 from cachetools import TTLCache
-import logging
-
-logger = logging.getLogger(__name__)
+from config     import logger
 
 class Base:
     def __init__(self):

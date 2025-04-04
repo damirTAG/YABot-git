@@ -1,8 +1,9 @@
-import logging, os, traceback, random
+import os, traceback, random
 
 from aiogram                import Router, F, types, Bot
 
 from utils                  import Tools
+from config                 import logger
 from config.constants       import (
     CACHE_CHAT, SAVE_BUTTON, CLOSE_BUTTON, 
     COOL_PHRASES, SAVE_BUTTON, SAVED, SAVED_BUTTON
@@ -13,7 +14,7 @@ from database.cache         import cache
 from services.yandexmusic   import YandexMusicSDK, TrackData
 from services.soundcloud    import SoundCloudTool
 
-logger  = logging.getLogger()
+
 router  = Router()
 
 db      = DB_actions()
@@ -56,7 +57,7 @@ async def save(call: types.CallbackQuery):
 
             await call.answer(f"{file_type.split('/')[0].capitalize()} successfully deleted", show_alert=True)
             await call.message.edit_reply_markup(reply_markup=SAVE_BUTTON)
-            logging.info(f"File {file_type} deleted for user {user_id}")
+            logger.info(f"File {file_type} deleted for user {user_id}")
         else:
             # File does not exist -> Save it
             db.save_file(user_id, file_id, file_type)
@@ -67,11 +68,11 @@ async def save(call: types.CallbackQuery):
             await call.message.edit_reply_markup(
                 reply_markup=SAVED_BUTTON
             )
-            logging.info(f"File {file_type} saved for user {user_id}")
+            logger.info(f"File {file_type} saved for user {user_id}")
 
     except Exception as e:
         await call.answer("Failed to process file", show_alert=True)
-        logging.error(f"Error handling file {file_type} for user {user_id}: {e}")
+        logger.error(f"Error handling file {file_type} for user {user_id}: {e}")
 
 # -- platforms callbacks
 

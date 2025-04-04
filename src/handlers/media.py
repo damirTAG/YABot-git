@@ -80,7 +80,7 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
                     sound = await tt.download_sound(link)
                     media_list = []
                     for img in post_data.media:
-                        media_list.append(InputMediaPhoto(media=open(img, 'rb')))
+                        media_list.append(InputMediaPhoto(media=types.FSInputFile(img)))
 
                     chunks = [media_list[i:i+10] for i in range(0, len(media_list), 10)]
                     if chunks:

@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.10
 
 RUN apk add -q --progress --update --no-cache ffmpeg
 
@@ -9,4 +9,4 @@ RUN pip install --upgrade pip && \
 
 COPY . /src
 WORKDIR /src
-CMD python ./main.py
+CMD python ./app.py

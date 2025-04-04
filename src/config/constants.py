@@ -9,15 +9,14 @@ IGNORE_CHAT_IDS = [-1001559555304, -1001919227306, -1001987624296, -100205026627
 SAVED           = "🔥 This {} saved. Call @yerzhanakh_bot in inline to send it in any chat"
 BASE_ERROR      = f"<i>Sorry, failed to proceed this request</i>"
 UPDATE_NOTIFY   = "Youtube Video/Shorts downloader is now working! Audio handler will be added soonly\nЮтуб видео и шортсы тепер снова качает, позже добавлю загрузку видео"
-HELP            = """
-<b>Supporting services:</b>
-<i>🔴 YouTube Video/Shorts
-🔵 Instagram Reels/Posts
+HELP            = """<b>Supporting services:</b>
+<i>🔵 Instagram Reels/Posts
 🔵 VK Clips
 🟣 Twitch Clips
 ⚫️ TikTok Videos/Pics
 🟠 SoundCloud Search/Track
 🟡 Yandex.Music Search/Track (New)</i>
+<s>🔴 YouTube Video/Shorts</s>
 
 <b>Inline:</b>
 <code>@yerzhanakh_bot</code> - get your saved tracks

@@ -1,15 +1,15 @@
-import time, os, logging
+import time, os
 
 from aiogram            import Bot, Router, F, types
 from aiogram.filters    import Command
 
+from config             import logger
 from services.convert   import Converter
 from database.repo      import DB_actions
 from utils.decorators   import log
 
 router  = Router()
 db      = DB_actions()
-logger  = logging.getLogger()
 
 @router.message(Command("voice"))
 async def toggle_voice_recognition(message: types.Message):
