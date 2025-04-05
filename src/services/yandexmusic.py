@@ -70,9 +70,9 @@ CHART_OPTIONS = Literal[
 
 @dataclass
 class TrackData:
-    id: str                           = None
+    id: int                           = None
     """Track ID"""
-    album_id: str                     = None
+    album_id: int                     = None
     album_title: str                  = None 
     title: str                        = None
     duration: float                   = None

@@ -10,7 +10,7 @@ class Base:
         cache = getattr(self, cache_name, None)
         if cache is not None:
             cache[key] = value
-            # logger.info(f"Added to cache: {cache_name} - {key}: {value}")
+            # logger.info(f"Added to cache: {cache_name} - {key.__format__}: {value}")
         else:
             logger.error(f"Cache {cache_name} not found")
 
@@ -21,7 +21,7 @@ class Base:
             # if cached_value:
             #     logger.info(f"Cache hit for {cache_name} - {key}: {cached_value}")
             # else:
-            #     logger.info(f"Cache miss for {cache_name} - {key}")
+            #     logger.info(f"Cache miss for {cache_name} - {key.__format__}")
             return cached_value
         else:
             logger.error(f"Cache {cache_name} not found")

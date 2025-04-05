@@ -1,0 +1,17 @@
+name: Production Deployment
+
+on: [push]
+
+jobs:
+    deploy:
+        if: github.ref == 'refs/heads/prod'
+        runs-on: [ubuntu-latest]
+        steps:
+            - uses: actions/checkout@v1
+            - name: Push to server
+              uses: damirTAG/ssh-action@prod
+              with:
+                  host: ${{ secrets.VPS_GER_IP }}
+                  username: ${{ secrets.VPS_GER_USERNAME }}
+                  password: ${{ secrets.VPS_GER_PASSWORD }}
+                  script: cd ${{ secrets.PROJECT_PATH }} && git pull

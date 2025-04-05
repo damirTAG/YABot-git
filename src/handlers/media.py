@@ -357,7 +357,7 @@ async def yandex_music_link_handler(m: types.Message):
         if not track:
             return await m.answer("🚫 Track not found =000")        
 
-        cache.add_to_cache("yandexmusic", track.id, track)
+        cache.add_to_cache("yandexmusic", int(track.id), track)
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[

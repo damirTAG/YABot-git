@@ -78,7 +78,7 @@ async def save(call: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("yandex_"))
 async def download_yandex_track(callback_query: types.CallbackQuery, bot: Bot):
-    track_id = callback_query.data.removeprefix("yandex_")
+    track_id = int(callback_query.data.removeprefix("yandex_"))
     track = cache.get_from_cache("yandexmusic", int(track_id))
     file_path = None
 
