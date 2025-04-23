@@ -14,8 +14,9 @@ def get_env(key, default=None, required=False):
     return value
 
 # Application environment
-ENV = get_env("ENV", "production")  # Options: development, testing, production
-DEBUG = ENV == "production"
+# Options: development, testing, production
+ENV = get_env("ENV", "development")  
+DEBUG = ENV == "development"
 
 # Bot configuration
 BOT_TOKEN = get_env("TOKEN", required=True)

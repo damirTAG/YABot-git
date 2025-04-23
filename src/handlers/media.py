@@ -229,7 +229,7 @@ async def inst_photos_handler(message: types.Message, bot: Bot):
                 break  # Stop checking after first 404
 
     if not valid_images:
-        await message.reply("❌ No images found for this post.")
+        await message.reply("❌ Failed to get content from this post.", reply_markup=CLOSE_BUTTON)
         shutil.rmtree(file_path)
         return
 
@@ -239,9 +239,17 @@ async def inst_photos_handler(message: types.Message, bot: Bot):
     for filename in sorted(os.listdir(file_path)):
         file_full_path = os.path.join(file_path, filename)
         if filename.endswith('.mp4'):
-            media_list.append(InputMediaVideo(media=open(file_full_path, 'rb'), caption=caption if not media_list else ""))
+            media_list.append(
+                InputMediaVideo(
+                    media=types.FSInputFile(file_full_path), caption=caption if not media_list else None
+                )
+            )
         elif filename.endswith('.jpg'):
-            media_list.append(InputMediaPhoto(media=open(file_full_path, 'rb'), caption=caption if not media_list else ""))
+            media_list.append(
+                InputMediaPhoto(
+                    media=types.FSInputFile(file_full_path), caption=caption if not media_list else None
+                )
+            )
 
     chunks = [media_list[i:i+10] for i in range(0, len(media_list), 10)]
 
@@ -252,7 +260,7 @@ async def inst_photos_handler(message: types.Message, bot: Bot):
                     item.caption = ""
             await bot.send_media_group(event_chat.id, media=chunk, reply_to_message_id=message.message_id)
     else:
-        await message.reply("❌ Failed to retrieve any images.")
+        await message.reply("❌ Failed to retrieve any images.", reply_markup=CLOSE_BUTTON)
 
     shutil.rmtree(file_path)
     logger.info(f"[Instagram:post] | {shortcode} folder removed successfully")
@@ -382,7 +390,7 @@ async def soundload(message: types.Message, bot: Bot):
     if chat_id in IGNORE_CHAT_IDS:
         return False
     else:
-        await bot.send_chat_action(chat_id, 'record_video')
+        await bot.send_chat_action(chat_id, 'record_voice')
         match = re.search(Patterns.SOUNDCLOUD.value, message.text)
         if match:
             link = match.group(0)
@@ -408,7 +416,7 @@ async def soundload(message: types.Message, bot: Bot):
             else:
                 logger.info("downloading mp3 format | SOUNDCLOUD")
                 try:
-                    track = await sc.get_track(link)
+                    track = await sc.get_track(str(link))
                     saved_track = await sc.save_track(track, 'audio')
                 except Exception as e:
                     logger.error(f'[soundcloud]: failed to get/save track {e}')
@@ -420,16 +428,14 @@ async def soundload(message: types.Message, bot: Bot):
                 caption = f'{track.caption}\n<i>via @yerzhanakh_bot</i>'
 
                 try:
-                    await bot.send_chat_action(chat_id, 'upload_audio')
-                    sended_to_user = await bot.send_audio(
-                        chat_id=chat_id, 
+                    await bot.send_chat_action(chat_id, 'upload_voice')
+                    sended_to_user = await message.reply_audio(
                         audio=types.FSInputFile(saved_track),
                         caption=caption,
-                        duration=track.duration,
+                        duration=int(track.duration),
                         performer=track.artists,
                         title=track.title,
-                        reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None,
-                        reply_to_message_id=message_id
+                        reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None
                     )
                     cached_audio = await bot.copy_message(CACHE_CHAT, chat_id, sended_to_user.message_id)
                     try:
@@ -437,7 +443,8 @@ async def soundload(message: types.Message, bot: Bot):
                         logger.info(f'[Soundcloud:track] | {ConsoleColors.OKGREEN}{link} cached{ConsoleColors.ENDC}')
                     except Exception as e:
                         logger.info(f'[Soundcloud:track] | Failed to cache {link} | Error: {e}')
-                except:
+                except Exception as e:
+                    logger.error(f'Failed to send soundcloud track: {e}')
                     return await bot.send_message(
                         text=BASE_ERROR, 
                         chat_id=chat_id, 
