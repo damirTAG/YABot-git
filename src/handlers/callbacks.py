@@ -6,10 +6,11 @@ from utils                  import Tools
 from config                 import logger
 from config.constants       import (
     CACHE_CHAT, SAVE_BUTTON, CLOSE_BUTTON, 
-    COOL_PHRASES, SAVE_BUTTON, SAVED, SAVED_BUTTON
+    COOL_PHRASES, SAVE_BUTTON, SAVED, SAVED_BUTTON, ARE_YOU_SURE_STICKER_ID
 )
 from database.repo          import DB_actions
 from database.cache         import cache
+from utils.helpers          import build_saved_files_keyboard, build_file_action_keyboard, build_delete_confirmation_keyboard
 
 from services.yandexmusic   import YandexMusicSDK, TrackData
 from services.soundcloud    import SoundCloudTool
@@ -59,7 +60,7 @@ async def save(call: types.CallbackQuery):
             await call.message.edit_reply_markup(reply_markup=SAVE_BUTTON)
             logger.info(f"File {file_type} deleted for user {user_id}")
         else:
-            # File does not exist -> Save it
+            # File does not exist -> save it
             db.save_file(user_id, file_id, file_type)
 
             await call.answer(
@@ -73,6 +74,161 @@ async def save(call: types.CallbackQuery):
     except Exception as e:
         await call.answer("Failed to process file", show_alert=True)
         logger.error(f"Error handling file {file_type} for user {user_id}: {e}")
+
+
+
+@router.callback_query(F.data.startswith("saved_page:"))
+async def handle_saved_pagination(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    page = int(callback.data.split(":")[1])
+    
+    keyboard = build_saved_files_keyboard(user_id, page)
+
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("saved_file:"))
+async def handle_saved_file_selection(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    file_db_id = int(callback.data.split(":")[1])
+
+    file_info = db.get_file_by_id(file_db_id)
+    
+    if not file_info or file_info["user_id"] != user_id:
+        await callback.answer("File not found or access denied.")
+        return
+
+    file_type = file_info["type"].split('/')[0].lower()
+    file_id = file_info["file_id"]
+    action_keyboard = build_file_action_keyboard(file_db_id)
+    
+    try:
+        await callback.message.delete()
+        if file_type == "video":
+            await callback.message.answer_video(
+                video=file_id,
+                caption="Your saved video",
+                reply_markup=action_keyboard
+            )
+        elif file_type == "audio":
+            await callback.message.answer_audio(
+                audio=file_id,
+                caption="Your saved audio",
+                reply_markup=action_keyboard
+            )
+        else:
+            await callback.message.reply(
+                f"Unknown file type: {file_type}",
+                reply_markup=action_keyboard
+            )
+            
+        await callback.answer()
+        
+    except Exception as e:
+        logger.error(f"Error sending saved file: {e}")
+        await callback.answer("Failed to send the file. It may have been deleted from Telegram servers.")
+
+# Handle delete file callback
+@router.callback_query(F.data.startswith("delete_file:"))
+async def handle_delete_file_request(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    file_db_id = int(callback.data.split(":")[1])
+    
+    file_info = db.get_file_by_id(file_db_id)
+    
+    if not file_info or file_info["user_id"] != user_id:
+        await callback.answer("File not found or access denied.")
+        return
+
+    file_type = file_info["type"].split('/')[0].lower()
+
+    confirmation_keyboard = build_delete_confirmation_keyboard(file_db_id)
+    
+    await callback.message.answer_sticker(ARE_YOU_SURE_STICKER_ID)
+
+    await callback.message.reply(
+        f"Are you sure you want to delete this {file_type}?",
+        reply_markup=confirmation_keyboard
+    )
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("confirm_delete:"))
+async def handle_delete_confirmation(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    file_db_id = int(callback.data.split(":")[1])
+
+    file_info = db.get_file_by_id(file_db_id)
+    
+    if not file_info or file_info["user_id"] != user_id:
+        await callback.answer("File not found or access denied.")
+        return
+
+    delete_query = """
+        DELETE FROM user_saved
+        WHERE id = ?
+    """
+    
+    success = db.execute_query(delete_query, (file_db_id,))
+    
+    if success:
+        await callback.answer("File deleted successfully.")
+        
+        # Get updated file count
+        query = """
+            SELECT COUNT(*) FROM user_saved
+            WHERE user_id = ?
+        """
+        result = db.execute_query(query, (user_id,), fetch_all=False)
+        total_files = result[0] if result else 0
+        
+        if total_files == 0:
+            try:
+                await callback.message.delete()
+                await callback.message.answer("You have no saved files yet.")
+            except Exception as e:
+                logger.error(f"Error updating file list: {e}")
+        else:
+            keyboard = build_saved_files_keyboard(user_id)
+            
+            try:
+                await callback.message.delete()
+                await callback.message.answer(
+                    f"You have {total_files} saved {'file' if total_files == 1 else 'files'}. "
+                    f"Select one to view:",
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                logger.error(f"Error updating file list: {e}")
+    else:
+        await callback.answer("Failed to delete the file.")
+
+
+# Handle back to files list callback
+@router.callback_query(F.data == "back_to_files")
+async def handle_back_to_files(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+
+    query = """
+        SELECT COUNT(*) FROM user_saved
+        WHERE user_id = ?
+    """
+    result = db.execute_query(query, (user_id,), fetch_all=False)
+    total_files = result[0] if result else 0
+    
+    if total_files == 0:
+        await callback.message.edit_text("You have no saved files.")
+    else:
+        keyboard = build_saved_files_keyboard(user_id)
+
+        await callback.message.delete()
+        return await callback.message.answer(
+            f"You have {total_files} saved {'file' if total_files == 1 else 'files'}. "
+            f"Select one to view:",
+            reply_markup=keyboard
+        )
+    
+    await callback.answer()
 
 # -- platforms callbacks -- 
 

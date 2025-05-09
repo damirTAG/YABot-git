@@ -10,6 +10,7 @@ from random             import randrange
 from config             import logger
 from utils              import Tools
 from utils.decorators   import log
+from utils.helpers      import build_saved_files_keyboard
 from services.openai    import generate_response
 from database.repo      import DB_actions
 from database.cache     import cache
@@ -20,7 +21,8 @@ from config.constants   import (
     GENERATING_BUTTON,
     FAILED_BUTTON,
     MAX_GPT_QUERY_LENGTH,
-    IGNORE_CHAT_IDS
+    IGNORE_CHAT_IDS,
+    PM_BUTTON
 )
 
 router  = Router()
@@ -119,7 +121,7 @@ async def info_handler(message: types.Message):
 
     except Exception as e:
         logger.error(f"Error in info_handler: {e}")
-        await message.reply("Whoops! My stats calculator just did a backflip 🤸‍♂️ Try again in a bit! 😅")
+        await message.reply("Failed to handle this request, try again later")
 
 
 @router.message(Command('ask'))
@@ -166,6 +168,33 @@ async def ask_handler(m: types.Message, command: CommandObject):
             parse_mode='Markdown'
         )
 
+@router.message(Command('saved'))
+@log('SAVED')
+async def show_saved_files_handler(m: types.Message):
+    user_id = m.from_user.id
+
+    if m.chat.type != "private":
+        return await m.reply(
+            "This command only works in private chat with the bot.", reply_markup=PM_BUTTON, disable_web_page_preview=True
+        )
+
+    query = """
+        SELECT COUNT(*) FROM user_saved
+        WHERE user_id = ?
+    """
+    result = db.execute_query(query, (user_id,), fetch_all=False)
+    total_files = result[0] if result else 0
+
+    if total_files == 0:
+        return await m.reply("You don't have any saved files yet.")
+    
+    keyboard = build_saved_files_keyboard(user_id)
+    
+    await m.reply(
+        f"You have {total_files} saved {'file' if total_files == 1 else 'files'}. "
+        f"Select one to view:",
+        reply_markup=keyboard
+    )
 
 # -- Music platforms search commands --
 from services.yandexmusic   import YandexMusicSDK, TrackData

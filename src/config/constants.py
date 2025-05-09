@@ -48,6 +48,7 @@ INFO            = (
     "❤️ Thanks for using the bot! Any suggestions? Feel free to contact @damirtag"
     f"\n\n<i>Bot's source-code available on</i> <b><a href='{GH_REPO}'>GitHub</a></b>"
 )
+ARE_YOU_SURE_STICKER_ID = 'CAACAgIAAxkBAAIH22geNVJr-3S_AjeP6c66NFrUu-5OAAI1dwAC7cXxSlIE1lAabmYFNgQ'
 
 # -- VARS -- 
 MAX_GPT_QUERY_LENGTH: int = 150
@@ -124,4 +125,8 @@ GENERATING_BUTTON       = InlineKeyboardMarkup(inline_keyboard=[
 
 FAILED_BUTTON           = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='❌ Failed', callback_data='failed')]
+])
+
+PM_BUTTON               = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='Open PM', url='https://t.me/yerzhanakh_bot')]
 ])

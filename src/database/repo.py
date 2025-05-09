@@ -1,6 +1,6 @@
 import sqlite3, logging
 
-from typing                 import List, Tuple, Dict, Any
+from typing                 import List, Tuple, Dict, Any, Optional
 from contextlib             import closing
 from config.constants       import CACHE_CHAT
 from utils                  import ConsoleColors
@@ -145,7 +145,13 @@ class DB_actions():
         
         return new_setting
         
-    def execute_query(self, query: str, parameters: tuple = (), db_path: str = 'stats.db') -> List[Tuple]:
+    def execute_query(
+            self, 
+            query: str, 
+            parameters: tuple = (), 
+            db_path: str = 'stats.db', 
+            fetch_all: bool = True
+        ) -> List[Tuple]:
         """
         Execute a query and return the results.
         
@@ -161,10 +167,13 @@ class DB_actions():
                 with closing(conn.cursor()) as cursor:
                     cursor.execute(query, parameters)
                     if query.strip().upper().startswith(("SELECT", "PRAGMA", "WITH")):
-                        return cursor.fetchall()
+                        if fetch_all:
+                            return cursor.fetchall()
+                        else:
+                            return cursor.fetchone()
                     else:
                         conn.commit()
-                        return []
+                        return True
         except sqlite3.Error as e:
             self.logger.error(f"Database query error: {e}")
             self.logger.error(f"Query: {query}, Parameters: {parameters}")
@@ -311,7 +320,72 @@ class DB_actions():
         VALUES (?, ?, ?, datetime('now'))
         '''
         self.execute_query(query, (user_id, file_id, file_type))
-    
+
+    def get_file_by_id(self, file_id: int) -> Optional[Dict[str, Any]]:
+        """Get a specific saved file by its database ID.
+        
+        Args:
+            file_id: The database ID of the saved file
+            
+        Returns:
+            Dictionary with file info or None if not found
+        """
+        query = """
+            SELECT us.id, us.file_id, us.type, us.saved_at, us.user_id
+            FROM user_saved us
+            WHERE us.id = ?
+        """
+        
+        result = self.execute_query(query, (file_id,), fetch_all=False)
+        
+        if not result:
+            return None
+            
+        return {
+            "id": result[0],
+            "file_id": result[1],
+            "type": result[2],
+            "saved_at": result[3],
+            "user_id": result[4]
+        }
+
+    def get_user_saved_files(self, user_id: int, page: int = 0, items_per_page: int = 5) -> List[Dict[str, Any]]:
+        """Get saved files for a specific user with pagination.
+        
+        Args:
+            user_id: The ID of the user
+            page: The page number (0-indexed)
+            items_per_page: Number of items per page
+            
+        Returns:
+            List of dictionaries containing file information
+        """
+        offset = page * items_per_page
+        
+        query = """
+            SELECT us.id, us.file_id, us.type, us.saved_at
+            FROM user_saved us
+            WHERE us.user_id = ?
+            ORDER BY us.saved_at DESC
+            LIMIT ? OFFSET ?
+        """
+        
+        results = self.execute_query(query, (user_id, items_per_page, offset))
+        
+        if not results:
+            return []
+        
+        files = []
+        for row in results:
+            files.append({
+                "id": row[0],
+                "file_id": row[1],
+                "type": row[2],
+                "saved_at": row[3]
+            })
+            
+        return files
+
     def get_stats(self) -> Dict[str, Any]:
         """
         Get comprehensive statistics from the database.
