@@ -28,6 +28,7 @@ from services.yandexmusic   import YandexMusicSDK, TrackData
 from services.soundcloud    import SoundCloudTool
 from services.tiktok        import TikTok, metadata
 from services.inst          import download_inst_post, download_video
+from services.youtube       import YouTubeSDK
 
 logger  = logging.getLogger()
 router  = Router()
@@ -37,6 +38,10 @@ db      = DB_actions()
 
 # -- services --
 sc = SoundCloudTool()
+youtube = YouTubeSDK(
+    output_dir="yt_video",
+    quality="720p",
+)
 
 
 # -- brainrot platforms first --
@@ -349,7 +354,62 @@ async def twitch_vk_handler(message: types.Message, bot: Bot):
                 os.remove(title)
                 logger.info("%s has been removed successfuly" % title)
 
+@router.message(RegexFilter(Patterns.YOUTUBE.value))
+@log('YOUTUBE_VIDEO')
+async def handle_youtube_video(m: types.Message, bot: Bot):
+    if m.chat.id in IGNORE_CHAT_IDS:
+        return False
+    await bot.send_chat_action(m.chat.id, 'record_video')
 
+    match = re.search(Patterns.YOUTUBE.value, m.text)
+    if match:
+        link: str = match.group(0)
+
+    try:
+        logger.info(
+            f"(Chat: [ID]: {m.chat.id}, [Title]: {m.chat.title}) "
+            f"[Username]: {m.from_user.username}, "
+            f"Link: {link}"
+        )
+    except AttributeError:
+        pass
+
+    try:
+        cache_result = db.get_cached_media(link)
+        if cache_result:
+            from_chat_id, from_message_id = cache_result
+            return await bot.copy_message(
+                m.chat.id, 
+                from_chat_id, 
+                from_message_id, 
+                reply_to_message_id=m.message_id,
+                reply_markup=SAVE_BUTTON if m.chat.type == 'private' else None
+            )
+
+
+        ready_youtube_obj = await youtube.download(link, duration_limit=600)
+        if ready_youtube_obj:
+            try:
+                video = await bot.send_video(
+                    chat_id=m.chat.id, 
+                    caption='<i>via @yerzhanakh_bot</i>',
+                    reply_to_message_id=m.message_id, 
+                    video=types.FSInputFile(ready_youtube_obj),
+                    supports_streaming=True,
+                    reply_markup=SAVE_BUTTON if m.chat.type == 'private' else None
+                )
+                if video:
+                    sended_media = await bot.copy_message(CACHE_CHAT, m.chat.id, video.message_id)
+                    db.save_to_cache(sended_media.message_id, link)
+                    os.remove(ready_youtube_obj)
+            except exceptions.TelegramNetworkError:
+                await m.reply('Sorry the file is too large')
+                os.remove(ready_youtube_obj)
+                logger.error('Youtube video file is oo large')
+            except Exception as e:   
+                logger.exception(f'ERROR DOWNLOADING TIKTOK VIDEO: {e}\nTraceback: {traceback.print_exc()}') 
+    except Exception as e:
+        logger.error(f'Error in handle youtube video: {e}')
 
 # -- music platforms link handlers --
 

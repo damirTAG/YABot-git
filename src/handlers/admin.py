@@ -2,6 +2,7 @@ import asyncio, json, pytz
 
 from aiogram            import Bot, Router, F, types
 from aiogram.filters    import Command, CommandObject
+from aiogram.types      import InlineKeyboardMarkup, InlineKeyboardButton
 
 from datetime           import datetime
 
@@ -147,12 +148,12 @@ async def send_survey(m: types.Message, command: CommandObject, bot: Bot):
         
         print(f'Total {len(pax)} users and {len(chats)} chats')
         
-        keyboard = types.InlineKeyboardMarkup(
+        keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                (
-                    types.InlineKeyboardButton("👍", callback_data="vote_up"),
-                    types.InlineKeyboardButton("👎", callback_data="vote_down")
-                )
+                [
+                    InlineKeyboardButton(text="👍", callback_data="vote_up"),
+                    InlineKeyboardButton(text="👎", callback_data="vote_down")
+                ]
             ]
         )
         
