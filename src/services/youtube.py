@@ -184,9 +184,7 @@ class YouTubeSDK:
 
             duration = info.get('duration', None)
             if duration and duration >= duration_limit:
-                return Exception(
-                    'Video is longer than {} seconds. Download aborted.'.format(duration_limit)
-                )
+                raise Exception(f"Video is longer than {duration_limit} seconds. Download aborted.")
                 
             # Get the downloaded file path
             if 'entries' in info:  # It's a playlist

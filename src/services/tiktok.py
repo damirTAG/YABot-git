@@ -238,19 +238,27 @@ class TikTok:
             self.logger.error(f"Failed to search: {e}")    
 
     async def download_sound(
-            self, 
-            link: Union[str], 
-            audio_filename: Optional[str] = None, 
-            audio_ext: Optional[str] = ".mp3"
-        ):
+        self,
+        link: Union[str],
+        audio_filename: Optional[str] = None,
+        audio_ext: str = ".mp3"
+    ) -> str:
         await self._ensure_data(link)
-        
+
+        file_url = self.result.get('music_info', {}).get('play', '')
+        if not file_url:
+            file_url = self.result.get('play', '')
+        if not file_url:
+            raise ValueError("❌ No audio URL found in either 'music_info.play' or 'play'.")
+
         if not audio_filename:
-            audio_filename = f"{self.result['music_info']['title']}{audio_ext}"
-        else:
+            title = self.result.get('music_info', {}).get('title', 'audio')
+            safe_title = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in title).strip()
+            audio_filename = f"{safe_title}{audio_ext}"
+        elif not audio_filename.endswith(audio_ext):
             audio_filename += audio_ext
-        
-        await self._download_file(self.result['music_info']['play'], audio_filename)
+
+        await self._download_file(file_url, audio_filename)
         self.logger.info(f"Sound - Downloaded and saved sound as {audio_filename}")
         return audio_filename
 

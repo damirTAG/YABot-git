@@ -11,9 +11,10 @@ logger = logging.getLogger()
 class Tools():
     def __init__(self) -> None:
         self.PLATFORM_PATTERNS = {
-            "TikTok": r"tiktok\.com",
-            "SoundCloud": r"soundcloud\.com",
-            "Instagram": r"instagram\.com",
+            "TikTok": r"(?:https?://)?(?:www\.)?tiktok\.com",
+            "SoundCloud": r"(?:https?://)?(?:www\.)?soundcloud\.com",
+            "Instagram": r"(?:https?://)?(?:www\.)?instagram\.com",
+            "YouTube": r"(?:https?://)?(?:www\.)?(youtube\.com|youtu\.be)"
         }
 
     async def convert_share_urls(self, url: str):
@@ -81,7 +82,13 @@ class Tools():
 
     def parse_platforms(self, video_links):
         try:
-            platform_counts = {"TikTok": 0, "SoundCloud": 0, "Instagram": 0, "Yandex Music": 0}
+            platform_counts = {
+                "TikTok": 0, 
+                "SoundCloud": 0, 
+                "Instagram": 0, 
+                "Yandex Music": 0,
+                "YouTube": 0
+            }
         
             for link in video_links:
                 if link.isdigit():  # Yandex Music хранит ID, а не ссылки
