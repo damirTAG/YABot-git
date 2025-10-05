@@ -27,7 +27,7 @@ from database.cache     import cache
 from services.yandexmusic   import YandexMusicSDK, TrackData
 from services.soundcloud    import SoundCloudTool
 from services.tiktok        import TikTok, metadata
-from services.inst          import download_inst_post, download_video
+from services.inst          import download_inst_post, download_instagram_reel
 from services.youtube       import YouTubeSDK
 
 logger  = logging.getLogger()
@@ -146,56 +146,94 @@ async def inst_reels_handler(message: types.Message, bot: Bot):
 
     try:
         logger.info(
-            f"(Chat: [ID]: {event_chat.id}, [Title]: {event_chat.title}) (User: [ID]: {message.from_user.id}, [Username]: {message.from_user.username}, [FN]: {message.from_user.first_name}, [SN]: {message.from_user.last_name}) Message: {message.text}")
+            f"(Chat: [ID]: {event_chat.id}, [Title]: {event_chat.title}) "
+            f"(User: [ID]: {message.from_user.id}, [Username]: {message.from_user.username}, "
+            f"[FN]: {message.from_user.first_name}, [SN]: {message.from_user.last_name}) "
+            f"Message: {message.text}"
+        )
     except AttributeError:
         pass
 
     if event_chat.id in IGNORE_CHAT_IDS:
         return False
-    else:
-        reel_url = await tools.convert_share_urls(message.text)
-        await bot.send_chat_action(message.chat.id, 'record_video')
+    
+    reel_url = await tools.convert_share_urls(message.text)
+    await bot.send_chat_action(message.chat.id, 'record_video')
 
-        result = db.get_cached_media(reel_url)
-        if result:
-            from_chat_id, from_message_id = result
-            return await bot.copy_message(
-                event_chat.id, 
-                from_chat_id, 
-                from_message_id, 
-                reply_to_message_id=message.message_id,
-                reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None
-            )
-        else:
-            shortcode = reel_url.split("/")[-1]
+    # Check cache first
+    result = db.get_cached_media(reel_url)
+    if result:
+        from_chat_id, from_message_id = result
+        return await bot.copy_message(
+            event_chat.id, 
+            from_chat_id, 
+            from_message_id, 
+            reply_to_message_id=message.message_id,
+            reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None
+        )
+    
+    # Extract shortcode for filename
+    shortcode = reel_url.rstrip('/').split("/")[-1]
+    download_dir = './temp_downloads'
+    os.makedirs(download_dir, exist_ok=True)
+    
+    video_filename = os.path.join(download_dir, f'{shortcode}.mp4')
 
-            video_filename = f'{shortcode}.mp4'
-            url = f'https://ddinstagram.com/videos/{shortcode}/1'
+    try:
+        # Use yt-dlp to download the reel
+        logger.info(f'[Instagram:reel] | Downloading... [{shortcode}]')
+        success = await download_instagram_reel(
+            url=reel_url,
+            download_dir=download_dir,
+            filename=shortcode
+        )
+        
+        if not success:
+            await message.reply("❌ Failed to download reel. Please try again later.")
+            return
 
-            try:
-                await download_video(url, video_filename)
+        # Check if file was downloaded
+        if not os.path.exists(video_filename):
+            # yt-dlp might have used a different extension, search for the file
+            possible_files = [f for f in os.listdir(download_dir) if f.startswith(shortcode)]
+            if possible_files:
+                video_filename = os.path.join(download_dir, possible_files[0])
+            else:
+                await message.reply("❌ Downloaded file not found.")
+                return
 
-                caption = f'📹 <i>via @yerzhanakh_bot</i>'
+        caption = f'📹 <i>via @yerzhanakh_bot</i>'
 
-                logger.info(f'[Instagram:video] | Sending... [{shortcode}]')
+        logger.info(f'[Instagram:reel] | Sending... [{shortcode}]')
 
-                sended_to_user = await message.answer_video(
-                    video=types.FSInputFile(
-                        video_filename
-                    ), 
-                    caption=caption, 
-                    reply_to_message_id=message.message_id, 
-                    supports_streaming=True,
-                    reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None,
-                )
-                sended_video = await sended_to_user.send_copy(CACHE_CHAT, reply_markup=None)
+        # Send to user
+        sended_to_user = await message.answer_video(
+            video=types.FSInputFile(video_filename), 
+            caption=caption, 
+            reply_to_message_id=message.message_id, 
+            supports_streaming=True,
+            reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None,
+        )
+        
+        sended_video = await sended_to_user.send_copy(CACHE_CHAT, reply_markup=None)
 
-                db.save_to_cache(sended_video.message_id, reel_url)
-            except Exception as e:
-                logger.info(f'[Instagram:video] | {e}')
-            finally:
-                if os.path.exists(video_filename):
-                    os.remove(video_filename)
+        db.save_to_cache(sended_video.message_id, reel_url)
+        
+        logger.info(f'[Instagram:reel] | Successfully sent [{shortcode}]')
+
+    except Exception as e:
+        logger.exception(f'[Instagram:reel] | Error processing {shortcode}: {e}')
+        await message.reply("❌ An error occurred while processing the reel.")
+    finally:
+        if os.path.exists(video_filename):
+            os.remove(video_filename)
+            logger.info(f'[Instagram:reel] | Cleaned up {video_filename}')
+        
+        try:
+            if os.path.exists(download_dir) and not os.listdir(download_dir):
+                os.rmdir(download_dir)
+        except Exception:
+            pass
 
 @router.message(RegexFilter(Patterns.INST_POSTS.value))
 @log('INST_POST')
@@ -374,26 +412,28 @@ async def handle_youtube_video(m: types.Message, bot: Bot):
     except AttributeError:
         pass
 
+    ready_youtube_obj = None
+
     try:
         cache_result = db.get_cached_media(link)
         if cache_result:
             from_chat_id, from_message_id = cache_result
             return await bot.copy_message(
-                m.chat.id, 
-                from_chat_id, 
-                from_message_id, 
+                m.chat.id,
+                from_chat_id,
+                from_message_id,
                 reply_to_message_id=m.message_id,
                 reply_markup=SAVE_BUTTON if m.chat.type == 'private' else None
             )
 
+        ready_youtube_obj = await youtube.download(link)
 
-        ready_youtube_obj = await youtube.download(link, duration_limit=600)
         if ready_youtube_obj:
             try:
                 video = await bot.send_video(
-                    chat_id=m.chat.id, 
+                    chat_id=m.chat.id,
                     caption='<i>via @yerzhanakh_bot</i>',
-                    reply_to_message_id=m.message_id, 
+                    reply_to_message_id=m.message_id,
                     video=types.FSInputFile(ready_youtube_obj),
                     supports_streaming=True,
                     reply_markup=SAVE_BUTTON if m.chat.type == 'private' else None
@@ -401,15 +441,25 @@ async def handle_youtube_video(m: types.Message, bot: Bot):
                 if video:
                     sended_media = await bot.copy_message(CACHE_CHAT, m.chat.id, video.message_id)
                     db.save_to_cache(sended_media.message_id, link)
-                    os.remove(ready_youtube_obj)
             except exceptions.TelegramNetworkError:
-                await m.reply('Sorry the file is too large')
-                os.remove(ready_youtube_obj)
-                logger.error('Youtube video file is oo large')
-            except Exception as e:   
-                logger.exception(f'ERROR DOWNLOADING TIKTOK VIDEO: {e}\nTraceback: {traceback.print_exc()}') 
+                await m.reply('Sorry, the file is too large')
+                logger.error('Youtube video file is too large')
+            except Exception as e:
+                logger.exception(
+                    f'ERROR DOWNLOADING YOUTUBE VIDEO: {e}\nTraceback: {traceback.format_exc()}'
+                )
+        else:
+            await m.reply('Sorry, the video exceeds duration limit (6 min)')
+
     except Exception as e:
-        logger.error(f'Error in handle youtube video: {e}')
+        logger.error(f'Error in handle_youtube_video: {e}')
+
+    finally:
+        try:
+            if ready_youtube_obj and os.path.exists(ready_youtube_obj):
+                os.remove(ready_youtube_obj)
+        except Exception as cleanup_err:
+            logger.warning(f"Cleanup failed: {cleanup_err}")
 
 # -- music platforms link handlers --
 

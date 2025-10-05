@@ -57,7 +57,7 @@ async def rate(message: types.Message):
 @log('INFO')
 async def info_handler(message: types.Message):    
     try:
-        results = db.execute_query("SELECT video_link FROM video_cache", db_path='cache.db')
+        results = db.execute_query("SELECT video_link FROM video_cache")
         video_links = [row[0] for row in results]
         total_files = len(video_links)
 

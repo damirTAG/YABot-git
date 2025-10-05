@@ -1,68 +1,20 @@
-from aiograpi               import Client
-from aiograpi.exceptions    import LoginRequired
-from config                 import INST_USERNAME, INST_PASS
-from urllib.parse           import urlparse, unquote
-from tqdm.asyncio           import tqdm
+from urllib.parse import urlparse, unquote
+import yt_dlp
 
-import logging, aiohttp, asyncio
+import logging
+import aiohttp
+import asyncio
 import os
 
 
 logger = logging.getLogger()
-cl = Client()
 semaphore = asyncio.Semaphore(20)
 
 
-async def login_user():
-    """
-    Attempts to login to Instagram using either the provided session information
-    or the provided username and password.
-    """
-    session = cl.load_settings("session.json")
-
-    login_via_session = False
-    login_via_pw = False
-
-    if session:
-        try:
-            cl.set_settings(session)
-            await cl.login(INST_USERNAME, INST_PASS)
-
-            # check if session is valid
-            try:
-                await cl.get_timeline_feed()
-            except LoginRequired:
-                logger.info("Session is invalid, need to login via username and password")
-
-                old_session = cl.get_settings()
-
-                # use the same device uuids across logins
-                cl.set_settings({})
-                cl.set_uuids(old_session["uuids"])
-
-                await cl.login(INST_USERNAME, INST_PASS)
-            login_via_session = True
-        except Exception as e:
-            logger.info("Couldn't login user using session information: %s" % e)
-
-    if not login_via_session:
-        try:
-            logger.info("Attempting to login via INST_USERNAME and password. username: %s" % INST_USERNAME)
-            if await cl.login(INST_USERNAME, INST_PASS):
-                login_via_pw = True
-        except Exception as e:
-            logger.info("Couldn't login user using username and password: %s" % e)
-
-    if not login_via_pw and not login_via_session:
-        raise Exception("Couldn't login user with either password or session")
-    
-async def get_video_direct_link(link: str) -> str:
-    media_pk = await cl.media_pk_from_url(link)
-
-    video_url = (await cl.media_info(media_pk)).video_url
-    return video_url
-
 async def download_inst_post(session: aiohttp.ClientSession, url, download_dir):
+    """
+    Downloads Instagram posts (images/videos) directly via URL.
+    """
     async with semaphore:
         async with session.get(url, headers={"User-Agent": "Mozilla/5.0"}) as response:
             if response.status == 404:
@@ -98,65 +50,71 @@ async def download_inst_post(session: aiohttp.ClientSession, url, download_dir):
             logger.info(f"[Instagram:post] | Downloaded: {filename}")
             return True
 
-DEFAULT_HEADERS = {
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "accept-encoding": "gzip, deflate, br, zstd",
-    "accept-language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,kk;q=0.6",
-    "cache-control": "max-age=0",
-    "priority": "u=0, i",
-    "sec-ch-ua": '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "cross-site",
-    "sec-fetch-user": "?1",
-    "sec-gpc": "1",
-    "upgrade-insecure-requests": "1",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-}
 
-async def download_video(url: str, video_filename: str, headers: dict = None):
+async def download_instagram_reel(url: str, download_dir: str, filename: str = None):
     """
-    Асинхронная функция для скачивания видео.
-
-    :param url: URL видео для скачивания.
-    :param video_filename: Путь для сохранения файла.
-    :param headers: Заголовки HTTP-запроса (по умолчанию используется DEFAULT_HEADERS).
+    Downloads Instagram reels using yt-dlp.
+    
+    :param url: Instagram reel URL
+    :param download_dir: Directory to save the downloaded file
+    :param filename: Optional custom filename (without extension)
     """
-    headers = headers or DEFAULT_HEADERS
-
-    if os.path.exists(video_filename):
-        logger.info(f"[Instagram:video] | {video_filename} уже существует. Пропускаем скачивание.")
-        return
-
+    os.makedirs(download_dir, exist_ok=True)
+    
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': os.path.join(download_dir, f'{filename or "%(id)s"}.%(ext)s'),
+        'quiet': False,
+        'no_warnings': False,
+        'extract_flat': False,
+        'cookiefile': None,  # Add cookie file path if needed for authenticated content
+    }
+    
     try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    logger.error(f"[Instagram:video] | Ошибка {response.status} при загрузке {url}")
-                    return
-
-                total_size = int(response.headers.get("content-length", 0))
-                
-                # Запись видео с прогресс-баром
-                with open(video_filename, "wb") as file, tqdm(
-                    total=total_size, unit="B", unit_scale=True, desc=video_filename
-                ) as pbar:
-                    async for chunk in response.content.iter_any():
-                        file.write(chunk)
-                        pbar.update(len(chunk))
-
-                logger.info(f"[Instagram:video] | Загружено и сохранено как {video_filename}")
-
+        # Run yt-dlp in a thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _download_with_ytdlp, url, ydl_opts)
+        logger.info(f"[Instagram:reel] | Successfully downloaded: {url}")
+        return True
     except Exception as e:
-        logger.exception(f"[Instagram:video] | Ошибка при скачивании {url}: {e}")
-
-# async def main():
-#     await login_user()
-#     link = "https://www.instagram.com/reel/DGYQXZOAciJ/?utm_source=ig_web_copy_link"
-#     await get_video_direct_link(link)
+        logger.exception(f"[Instagram:reel] | Error downloading {url}: {e}")
+        return False
 
 
-# import asyncio
-# asyncio.run(main())
+def _download_with_ytdlp(url: str, ydl_opts: dict):
+    """
+    Helper function to download with yt-dlp (runs in executor).
+    """
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+
+async def download_instagram_content(url: str, download_dir: str, filename: str = None):
+    """
+    Smart downloader that detects content type and uses appropriate method.
+    
+    :param url: Instagram URL (post or reel)
+    :param download_dir: Directory to save the downloaded file
+    :param filename: Optional custom filename
+    """
+    # Check if it's a reel
+    if '/reel/' in url or '/reels/' in url:
+        return await download_instagram_reel(url, download_dir, filename)
+    else:
+        # For regular posts, use direct download
+        async with aiohttp.ClientSession() as session:
+            return await download_inst_post(session, url, download_dir)
+
+
+# Example usage
+async def main():
+    # Download a reel
+    reel_url = "https://www.instagram.com/reel/DGYQXZOAciJ/"
+    await download_instagram_reel(reel_url, "./downloads", "my_reel")
+    
+    # Or use smart downloader
+    # await download_instagram_content(reel_url, "./downloads", "my_video")
+
+
+# if __name__ == "__main__":
+#     asyncio.run(main())

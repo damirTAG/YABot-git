@@ -27,5 +27,5 @@ tenacity
 ffmpeg-python
 yandex_music
 cachetools
-aiograpi
 python-dotenv
+psycopg2-binary

@@ -77,9 +77,7 @@ def generate_stats_text(stats):
     for user in stats['recent_users']:
         username = f"@{user[0]}" if user[0] else f"{user[1] or ''} {user[2] or ''}".strip()
         last_used = user[3]
-        last_used_utc = datetime.strptime(user[4], "%Y-%m-%d %H:%M:%S")
-        last_used_oral = last_used_utc.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Etc/GMT-5')).strftime("%Y-%m-%d %H:%M:%S")
-        stats_text += f" - {username} (<code>/{last_used}</code>: {last_used_oral})\n"
+        stats_text += f" - {username} (<code>/{last_used}</code>: {user[4]})\n"
         
     stats_text += "\n🔥 <b>10 most active:</b>\n"
     for user in stats['active_users']:
@@ -100,10 +98,7 @@ def build_saved_files_keyboard(user_id: int, page: int = 0) -> Optional[types.In
     if not files:
         return None
         
-    query = """
-        SELECT COUNT(*) FROM user_saved
-        WHERE user_id = ?
-    """
+    query = "SELECT COUNT(*) FROM user_saved WHERE user_id = %s"
     result = db.execute_query(query, (user_id,), fetch_all=False)
     total_files = result[0]
 
@@ -118,7 +113,7 @@ def build_saved_files_keyboard(user_id: int, page: int = 0) -> Optional[types.In
         file_id = file["id"]
 
         import datetime
-        saved_date = datetime.datetime.fromisoformat(file["saved_at"]).strftime("%d.%m.%Y")
+        saved_date = file["saved_at"].strftime("%d.%m.%Y")
         
         builder.row(types.InlineKeyboardButton(
             text=f"{file_type} ({saved_date})", 

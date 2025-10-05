@@ -160,31 +160,48 @@ class YouTubeSDK:
             Path to downloaded file
         """
         self.logger.info(f"Downloading video: {url}")
-        
-        # Set temporary quality if audio_only is True
+
+        # Save & possibly override quality
         original_quality = self.quality
         if audio_only:
             self.quality = 'mp3'
-            
-        ydl_opts = self._get_base_options()
-        
-        # Add post-processing for audio-only downloads
-        if audio_only:
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '128',  # Lower quality for faster downloads
-                }],
-            })
-            
+
+        base_opts = self._get_base_options()
+
+        # Step 1: Extract metadata without downloading
+        probe_opts = base_opts.copy()
+        probe_opts.update({
+            'skip_download': True,
+        })
+
         try:
-            info: dict = await self._run_yt_dlp(url, ydl_opts)
+            info = await self._run_yt_dlp(url, probe_opts)
+
+            duration = info.get('duration')
+            if duration and duration >= duration_limit:
+                self.logger.warning(f"Video duration {duration}s exceeds limit {duration_limit}s. Skipping.")
+                self.quality = original_quality
+                return None
+
+            # Step 2: Download with full options
+            download_opts = self._get_base_options()
+
+            if audio_only:
+                download_opts.update({
+                    'format': 'bestaudio/best',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '128',
+                    }],
+                })
+
+            info = await self._run_yt_dlp(url, download_opts)
 
             duration = info.get('duration', None)
             if duration and duration >= duration_limit:
-                raise Exception(f"Video is longer than {duration_limit} seconds. Download aborted.")
+                self.logger.warning(f"Video duration {duration}s exceeds limit {duration_limit}s. Skipping.")
+                return None
                 
             # Get the downloaded file path
             if 'entries' in info:  # It's a playlist
@@ -377,28 +394,3 @@ class YouTubeSDK:
         
         self.logger.info(f"Deleted {count} old files")
         return count
-
-
-# Example of how to use the SDK with a Telegram bot
-# async def example_telegram_usage():
-#     """Example showing how to use YouTubeSDK with a Telegram bot."""
-    
-#     # Initialize SDK with Telegram-friendly settings
-#     youtube = YouTubeSDK(
-#         output_dir="telegram_downloads",
-#         quality="720p",  # Medium quality for faster downloads
-#         max_filesize=50 * 1024 * 1024,  # 50MB limit for Telegram
-#         cookies_file='yt_cookies.txt'
-#     )
-    
-#     short = await youtube.download(
-#         'https://youtube.com/shorts/TEZ-r_1uOpY?si=qgwsExFUK6ChVe1j',
-#         duration_limit=500
-#     )
-#     if short:
-#         print(f'video downloaded to: {short}')
-
-
-# # This section would be activated in a real implementation
-# if __name__ == "__main__":
-#     asyncio.run(example_telegram_usage())
