@@ -1,7 +1,6 @@
 import time, os
 
 from aiogram            import Bot, Router, F, types
-from aiogram.filters    import Command
 
 from config             import logger
 from services.convert   import Converter
@@ -11,20 +10,10 @@ from utils.decorators   import log
 router  = Router()
 db      = DB_actions()
 
-@router.message(Command("voice"))
-async def toggle_voice_recognition(message: types.Message):
-    chat_id = message.chat.id
-    new_setting = db.toggle_voice_setting(chat_id)
-    
-    if new_setting:
-        await message.reply("Voice recognition has been <b>disabled</b> for this chat.")
-    else:
-        await message.reply("Voice recognition has been <b>enabled</b> for this chat.")
-
 @router.message(F.content_type.in_({'voice', 'video_note'}))
 @log('SPEECH_REC')
 async def get_audio_messages(message: types.Message, bot: Bot):
-    if db.is_voice_disabled(message.chat.id):
+    if db.get_setting(message.chat.id, "voice_disabled"):
         return
     
     file_name = None

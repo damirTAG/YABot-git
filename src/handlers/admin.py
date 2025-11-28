@@ -1,4 +1,4 @@
-import asyncio, json, pytz
+import asyncio, pytz
 
 from aiogram            import Bot, Router, F, types
 from aiogram.filters    import Command, CommandObject
@@ -8,7 +8,10 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.repo      import DB_actions
 from utils.helpers      import generate_stats_text, show_users_page
+from utils.broadcast    import BroadcastManager
 from config.constants   import ADMIN_KEYBOARD, DAMIR_USER_ID, UPDATE_NOTIFY
+
+from typing              import Optional, Dict
 
 router  = Router()
 db      = DB_actions()
@@ -358,106 +361,313 @@ async def send_file(
 
 
 # user quality survey
-VOTES_FILE = "votes.json"
+broadcast_manager = BroadcastManager()
+MAX_RETRIES = 3
+BASE_DELAY = 0.05
+BATCH_SIZE = 50
 
-def load_votes():
-    try:
-        with open(VOTES_FILE, "r") as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
 
-def save_votes(votes):
-    try:
-        with open(VOTES_FILE, "w") as file:
-            json.dump(votes, file, indent=4)
-    except Exception as e:
-        print(f"Error saving votes: {e}")
+async def send_with_retry(bot: Bot, user_id: int, message: str, 
+                         keyboard: Optional[InlineKeyboardMarkup] = None,
+                         retries: int = MAX_RETRIES) -> Dict:
+    """Send message with retry logic and error categorization"""
+    for attempt in range(retries):
+        try:
+            await bot.send_message(user_id, message, reply_markup=keyboard)
+            return {"status": "sent", "error": None}
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Categorize errors
+            if "blocked" in error_msg or "bot was blocked" in error_msg:
+                return {"status": "blocked", "error": "User blocked the bot"}
+            elif "chat not found" in error_msg or "user not found" in error_msg:
+                return {"status": "not_found", "error": "User/chat not found"}
+            elif "too many requests" in error_msg or "retry after" in error_msg:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+                return {"status": "rate_limited", "error": "Rate limit exceeded"}
+            elif attempt < retries - 1:
+                await asyncio.sleep(1)
+                continue
+            else:
+                return {"status": "failed", "error": str(e)}
+    
+    return {"status": "failed", "error": "Max retries exceeded"}
 
-votes = load_votes()
 
 @router.message(Command('sendall'))
-async def send_survey(m: types.Message, command: CommandObject, bot: Bot):
-    if m.from_user.id == 1038468423:
-        
-        users = db.execute_query("SELECT user_id FROM users")
-        pax = [row[0] for row in users]
-        
-        chats_list = db.execute_query("SELECT chat_Id FROM chats")
-        chats = [row[0] for row in chats_list]
-        
-        print(f'Total {len(pax)} users and {len(chats)} chats')
-        
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="👍", callback_data="vote_up"),
-                    InlineKeyboardButton(text="👎", callback_data="vote_down")
-                ]
-            ]
-        )
-        
-        total = 0
-        args = command.args
-        is_chat = args and args.lower() == 'chat'
-        is_not_vote = args and args.lower() == 'rmvote'
-        if is_chat:
-            pax = chats
-        
-        for pax_id in pax:
-            try:
-                await bot.send_message(
-                    pax_id, 
-                    UPDATE_NOTIFY, 
-                    reply_markup=None if is_not_vote else keyboard
-                )
-                total += 1
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                print(f"Failed to send message to {pax_id}: {e}")
-        print(f"Messages sent: {total}")
-
-@router.message(Command('results'))
-async def show_results(m: types.Message):
-    if m.from_user.id == 1038468423:
-        votes_data = load_votes()
-        yes_count = sum(1 for v in votes_data.values() if v == "Yes")
-        no_count = sum(1 for v in votes_data.values() if v == "No")
-        total_votes = len(votes_data)
-        
-        await m.reply(f"Results:\nYes: {yes_count}\nNo: {no_count}\nTotal voters: {total_votes}")
-
-@router.callback_query(lambda c: c.data in ["vote_up", "vote_down"])
-async def vote_handler(callback_query: types.CallbackQuery):
-    user_id = str(callback_query.from_user.id)
-    chat_id = str(callback_query.message.chat.id)
-    vote = callback_query.data
-    answer = 'Yes' if vote == 'vote_up' else 'No'
-    
-    if user_id in votes or chat_id in votes:
-        await callback_query.answer("You've already voted", show_alert=True)
+async def send_broadcast(m: types.Message, command: CommandObject, bot: Bot):
+    """
+    Send broadcast to all users/chats
+    Usage: 
+        /sendall - Send with voting buttons
+        /sendall rmvote - Send without voting buttons
+        /sendall chat - Send to chats only
+        /sendall preview - Preview message without sending
+    """
+    if m.from_user.id != 1038468423:
         return
     
-    votes[user_id if callback_query.message.chat.type == 'private' else chat_id] = answer
-    save_votes(votes)
+    args = command.args
+    is_chat = args and 'chat' in args.lower()
+    is_no_vote = args and 'rmvote' in args.lower()
+    is_preview = args and 'preview' in args.lower()
     
-    if callback_query.message.chat.type == 'private':
-        await callback_query.message.edit_text(f"Thank you for your vote!\nYou voted: {answer}")
-    else:
-        yes_count = sum(1 for v in votes.values() if v == "Yes")
-        no_count = sum(1 for v in votes.values() if v == "No")
-
-        keyboard = types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(text="👍", callback_data="vote_up"),
-                    types.InlineKeyboardButton(text="👎", callback_data="vote_down")
-                ]
-            ]
+    # Get message (you should replace UPDATE_NOTIFY with actual message)
+    message_text = UPDATE_NOTIFY
+    
+    # Preview mode
+    if is_preview:
+        keyboard = None if is_no_vote else InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(text="👍", callback_data="vote_up"),
+                InlineKeyboardButton(text="👎", callback_data="vote_down")
+            ]]
         )
+        await m.reply(f"Preview:\n\n{message_text}", reply_markup=keyboard)
+        return
+    
+    # Get recipients
+    if is_chat:
+        chats_list = db.execute_query("SELECT chat_Id FROM chats")
+        recipients = [row[0] for row in chats_list]
+        recipient_type = "chats"
+    else:
+        users = db.execute_query("SELECT user_id FROM users")
+        recipients = [row[0] for row in users]
+        recipient_type = "users"
+    
+    if not recipients:
+        await m.reply("No recipients found!")
+        return
+    
+    # Create broadcast campaign
+    broadcast_id = broadcast_manager.create_broadcast(message_text, not is_no_vote)
+    
+    # Prepare keyboard
+    keyboard = None if is_no_vote else InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text="👍", callback_data=f"vote_up:{broadcast_id}"),
+            InlineKeyboardButton(text="👎", callback_data=f"vote_down:{broadcast_id}")
+        ]]
+    )
+    
+    # Progress message
+    progress_msg = await m.reply(
+        f"🚀 Starting broadcast to {len(recipients)} {recipient_type}...\n\n"
+        f"Progress: 0/{len(recipients)}\n"
+        f"✅ Sent: 0\n"
+        f"❌ Failed: 0\n"
+        f"🚫 Blocked: 0"
+    )
+    
+    # Send to all recipients
+    stats = {
+        "total": len(recipients),
+        "sent": 0,
+        "failed": 0,
+        "blocked": 0,
+        "not_found": 0,
+        "rate_limited": 0
+    }
+    
+    failed_ids = []
+    
+    for i, recipient_id in enumerate(recipients, 1):
+        result = await send_with_retry(bot, recipient_id, message_text, keyboard)
+        
+        # Update stats
+        if result["status"] == "sent":
+            stats["sent"] += 1
+        elif result["status"] == "blocked":
+            stats["blocked"] += 1
+            failed_ids.append((recipient_id, result["error"]))
+        elif result["status"] == "not_found":
+            stats["not_found"] += 1
+            failed_ids.append((recipient_id, result["error"]))
+        elif result["status"] == "rate_limited":
+            stats["rate_limited"] += 1
+            failed_ids.append((recipient_id, result["error"]))
+        else:
+            stats["failed"] += 1
+            failed_ids.append((recipient_id, result["error"]))
+        
+        # Update progress every BATCH_SIZE messages
+        if i % BATCH_SIZE == 0 or i == len(recipients):
+            progress_text = (
+                f"🚀 Broadcast Progress\n\n"
+                f"Progress: {i}/{len(recipients)}\n"
+                f"✅ Sent: {stats['sent']}\n"
+                f"❌ Failed: {stats['failed']}\n"
+                f"🚫 Blocked: {stats['blocked']}\n"
+                f"👻 Not Found: {stats['not_found']}\n"
+                f"⏱ Rate Limited: {stats['rate_limited']}"
+            )
+            try:
+                await progress_msg.edit_text(progress_text)
+            except:
+                pass
+        
+        await asyncio.sleep(BASE_DELAY)
+    
+    # Save final stats
+    broadcast_manager.update_broadcast_stats(broadcast_id, stats)
+    
+    # Final report
+    success_rate = (stats['sent'] / stats['total'] * 100) if stats['total'] > 0 else 0
+    final_text = (
+        f"✅ Broadcast Complete!\n\n"
+        f"📊 Results:\n"
+        f"Total: {stats['total']}\n"
+        f"✅ Sent: {stats['sent']} ({success_rate:.1f}%)\n"
+        f"❌ Failed: {stats['failed']}\n"
+        f"🚫 Blocked: {stats['blocked']}\n"
+        f"👻 Not Found: {stats['not_found']}\n"
+        f"⏱ Rate Limited: {stats['rate_limited']}\n\n"
+        f"Broadcast ID: {broadcast_id}"
+    )
+    
+    if failed_ids:
+        final_text += f"\n\nUse /failures {broadcast_id} to see failed IDs"
+    
+    await progress_msg.edit_text(final_text)
 
+
+@router.message(Command('results'))
+async def show_results(m: types.Message, command: CommandObject):
+    """Show voting results for a broadcast. Usage: /results [broadcast_id]"""
+    if m.from_user.id != 1038468423:
+        return
+    
+    args = command.args
+    
+    if not args:
+        # Show all broadcasts
+        history = broadcast_manager.get_broadcast_history()
+        if not history:
+            await m.reply("No broadcasts found.")
+            return
+        
+        text = "📊 Broadcast History:\n\n"
+        for b in history[:10]:  # Show last 10
+            text += (
+                f"ID: {b['id']}\n"
+                f"Created: {b['created_at'][:19]}\n"
+                f"Sent: {b['stats']['sent']}/{b['stats']['total']}\n"
+                f"Message: {b['message']}\n\n"
+            )
+        
+        await m.reply(text)
+        return
+    
+    # Show specific broadcast results
+    broadcast_id = args
+    vote_stats = broadcast_manager.get_vote_stats(broadcast_id)
+    
+    if vote_stats["total"] == 0:
+        await m.reply(f"No votes yet for broadcast {broadcast_id}")
+        return
+    
+    yes_pct = (vote_stats["yes"] / vote_stats["total"] * 100) if vote_stats["total"] > 0 else 0
+    no_pct = (vote_stats["no"] / vote_stats["total"] * 100) if vote_stats["total"] > 0 else 0
+    
+    text = (
+        f"📊 Voting Results for {broadcast_id}\n\n"
+        f"👍 Yes: {vote_stats['yes']} ({yes_pct:.1f}%)\n"
+        f"👎 No: {vote_stats['no']} ({no_pct:.1f}%)\n"
+        f"Total Votes: {vote_stats['total']}"
+    )
+    
+    await m.reply(text)
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith(("vote_up:", "vote_down:")))
+async def vote_handler(callback_query: types.CallbackQuery):
+    """Handle voting on broadcasts"""
+    parts = callback_query.data.split(":")
+    vote_type = parts[0]
+    broadcast_id = parts[1] if len(parts) > 1 else "default"
+    
+    user_id = str(callback_query.from_user.id)
+    chat_id = str(callback_query.message.chat.id)
+    is_private = callback_query.message.chat.type == 'private'
+    
+    vote = "Yes" if vote_type == "vote_up" else "No"
+    identifier = user_id if is_private else chat_id
+    
+    # Try to add vote
+    if not broadcast_manager.add_vote(broadcast_id, identifier, vote):
+        await callback_query.answer("You've already voted!", show_alert=True)
+        return
+    
+    await callback_query.answer(f"Vote recorded: {vote}")
+    
+    # Update message
+    if is_private:
         await callback_query.message.edit_text(
-            f"{UPDATE_NOTIFY}"
-            f"\n\nYes: {yes_count}\nNo: {no_count}",
+            f"Thank you for your feedback!\n\nYour vote: {vote}"
+        )
+    else:
+        # Show live results in groups
+        vote_stats = broadcast_manager.get_vote_stats(broadcast_id)
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(text="👍", callback_data=f"vote_up:{broadcast_id}"),
+                InlineKeyboardButton(text="👎", callback_data=f"vote_down:{broadcast_id}")
+            ]]
+        )
+        
+        original_text = callback_query.message.text.split("\n\n")[0]
+        await callback_query.message.edit_text(
+            f"{original_text}\n\n"
+            f"👍 Yes: {vote_stats['yes']}\n"
+            f"👎 No: {vote_stats['no']}",
             reply_markup=keyboard
         )
+
+
+@router.message(Command('failures'))
+async def show_failures(m: types.Message, command: CommandObject):
+    """Show failed recipients for a broadcast. Usage: /failures [broadcast_id]"""
+    if m.from_user.id != 1038468423:
+        return
+    
+    await m.reply("Failed recipients logging not yet implemented in this version.\nCheck console logs for error details.")
+
+
+@router.message(Command('cleanvotes'))
+async def clean_old_votes(m: types.Message):
+    """Clean old vote data (keep last 5 broadcasts)"""
+    if m.from_user.id != 1038468423:
+        return
+    
+    broadcasts = list(broadcast_manager.data["broadcasts"].items())
+    if len(broadcasts) <= 5:
+        await m.reply("No old broadcasts to clean.")
+        return
+    
+    # Sort by created_at and keep last 5
+    sorted_broadcasts = sorted(
+        broadcasts,
+        key=lambda x: x[1]["created_at"],
+        reverse=True
+    )
+    
+    to_keep = {bid for bid, _ in sorted_broadcasts[:5]}
+    
+    # Remove old broadcasts
+    broadcast_manager.data["broadcasts"] = {
+        bid: b for bid, b in broadcast_manager.data["broadcasts"].items()
+        if bid in to_keep
+    }
+    broadcast_manager.data["votes"] = {
+        bid: v for bid, v in broadcast_manager.data["votes"].items()
+        if bid in to_keep
+    }
+    
+    broadcast_manager.save_data()
+    removed = len(broadcasts) - 5
+    await m.reply(f"✅ Cleaned {removed} old broadcast(s).")

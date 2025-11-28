@@ -3,16 +3,20 @@ from aiogram            import Router, types
 from utils              import RegexFilter, Tools
 from utils.decorators   import log
 from services.coins     import FiatAPI, CryptoAPI, get_change_emoji
+from database.repo      import DB_actions
 
 router      = Router()
 tools       = Tools()
 crypto_api  = CryptoAPI()
 fiat_api    = FiatAPI()
+db          = DB_actions()
 
 @router.message(RegexFilter(r"^(\d+(?:\.\d+)?\s+)?[a-zA-Z]+(\s+[a-zA-Z]+)?$"))
 @log('COINS_CONVERTER')
 async def convert_currency(message: types.Message):
     """Currency conversion handler"""
+    if db.get_setting(message.chat.id, "coins_converter_disabled"):
+        return
     try:
         # Parse the message
         parsed = tools.parse_currency_query(message.text)

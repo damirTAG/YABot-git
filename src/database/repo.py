@@ -76,9 +76,14 @@ class DB_actions():
 
                 # Voice settings table
                 cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS voice_settings (
+                    CREATE TABLE IF NOT EXISTS bot_settings (
                         chat_id BIGINT PRIMARY KEY,
-                        voice_disabled BOOLEAN NOT NULL DEFAULT FALSE
+                        voice_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+                        quote_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+                        tiktok_send_sound_videos_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+                        coins_converter_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+                        roll_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+                        gpt_disabled BOOLEAN NOT NULL DEFAULT FALSE
                     )
                 """)
 
@@ -138,39 +143,59 @@ class DB_actions():
             self.logger.error(f"Error getting cached media: {e}")
             return None
 
-    def is_voice_disabled(self, chat_id: int) -> bool:
-        """Check if voice is disabled for a chat."""
+    def toggle_setting(self, chat_id: int, setting: str) -> bool:
         try:
             with closing(self._get_connection()) as conn:
                 with closing(conn.cursor()) as cursor:
-                    cursor.execute('SELECT voice_disabled FROM voice_settings WHERE chat_id = %s', (chat_id,))
-                    result = cursor.fetchone()
-                    if result:
-                        return result[0]
-                    return False
-        except psycopg2.Error as e:
-            self.logger.error(f"Error checking voice setting: {e}")
+                    cursor.execute(
+                        f"SELECT {setting} FROM bot_settings WHERE chat_id = %s",
+                        (chat_id,)
+                    )
+                    row = cursor.fetchone()
+
+                    current = row[0] if row else False
+                    new = not current
+
+                    cursor.execute(f"""
+                        INSERT INTO bot_settings (chat_id, {setting})
+                        VALUES (%s, %s)
+                        ON CONFLICT (chat_id)
+                        DO UPDATE SET {setting} = %s
+                    """, (chat_id, new, new))
+
+                    conn.commit()
+                    return new
+        except Exception as e:
+            self.logger.error(f"Error toggling setting {setting}: {e}")
             return False
 
-    def toggle_voice_setting(self, chat_id: int) -> bool:
-        """Toggle voice setting for a chat."""
-        current_setting = self.is_voice_disabled(chat_id)
-        new_setting = not current_setting
-        
+    def get_setting(self, chat_id: int, setting: str) -> bool:
         try:
             with closing(self._get_connection()) as conn:
                 with closing(conn.cursor()) as cursor:
+
                     cursor.execute("""
-                        INSERT INTO voice_settings (chat_id, voice_disabled) 
-                        VALUES (%s, %s)
-                        ON CONFLICT (chat_id) 
-                        DO UPDATE SET voice_disabled = %s
-                    """, (chat_id, new_setting, new_setting))
-                    conn.commit()
-            return new_setting
-        except psycopg2.Error as e:
-            self.logger.error(f"Error toggling voice setting: {e}")
-            return current_setting
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'bot_settings'
+                    """)
+                    columns = {row[0] for row in cursor.fetchall()}
+
+                    if setting not in columns:
+                        self.logger.error(f"Unknown setting requested: {setting}")
+                        return False
+
+                    cursor.execute(
+                        f"SELECT {setting} FROM bot_settings WHERE chat_id = %s",
+                        (chat_id,)
+                    )
+                    row = cursor.fetchone()
+
+                    return row[0] if row else False
+
+        except Exception as e:
+            self.logger.error(f"Error reading setting `{setting}`: {e}")
+            return False
         
     def execute_query(
         self, 

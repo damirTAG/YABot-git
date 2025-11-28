@@ -1,6 +1,6 @@
 import time
 
-from aiogram                import Router, types
+from aiogram                import Bot, Router, types
 from aiogram.filters        import Command, CommandStart, CommandObject
 from aiogram.types          import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -8,10 +8,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from random             import randrange
 
 from config             import logger
-from utils              import Tools
+from utils              import Tools, RegexFilter
 from utils.decorators   import log
 from utils.helpers      import build_saved_files_keyboard
 from services.openai    import generate_response
+from services.makequote import QuoteMaker
 from database.repo      import DB_actions
 from database.cache     import cache
 from config.constants   import (
@@ -46,6 +47,9 @@ async def hello(message: types.Message):
 @router.message(Command(commands=["roll", "ролл"], prefix="!/."))
 @log('roll')
 async def rate(message: types.Message):
+    if db.get_setting(message.chat.id, "roll_disabled"):
+        return
+
     nick = f"<a href='tg://user?id={message.from_user.id}'>{message.from_user.full_name}</a>"
     random = (randrange(101))
     roll = f'🎱 <b>{nick}</b> роллит! [1-100]. Выпадает: <b>{random}</b>!'
@@ -127,6 +131,9 @@ async def info_handler(message: types.Message):
 @router.message(Command('ask'))
 @log('ASK')
 async def ask_handler(m: types.Message, command: CommandObject):
+    if db.get_setting(m.chat.id, "gpt_disabled"):
+        return
+    
     query: str = command.args
     user = m.from_user
 
@@ -277,3 +284,76 @@ async def soundsearch(message: types.Message, command: CommandObject):
 
     except Exception as e:
         logger.error(f"SoundCloud search error: {e}")
+
+
+# make quote handler
+quote_pattern = r'^[/\.](q|й)$'
+@router.message(RegexFilter(quote_pattern))
+async def makequote_handler(message: types.Message, bot: Bot):
+    if db.get_setting(message.chat.id, "quote_disabled"):
+        return
+
+    quotemaker = QuoteMaker(bot)
+    await quotemaker.send_quote(message)
+
+# settings handler
+SETTINGS_EMOJI = {
+    'voice_disabled': '🎤',
+    'quote_disabled': '💬',
+    'tiktok_send_sound_videos_disabled': '🎵',
+    'coins_converter_disabled': '💰',
+    'roll_disabled': '🎲',
+    'gpt_disabled': '🤖'
+}
+
+SETTINGS_NAMES = {
+    'voice_disabled': 'Voice Messages',
+    'tiktok_send_sound_videos_disabled': 'TikTok video with Sound',
+    'coins_converter_disabled': 'Currency Converter',
+    'quote_disabled': 'Quote Maker (/q)',
+    'roll_disabled': 'Roll Number (/roll)',
+    'gpt_disabled': 'GPT Responses (/ask)'
+}
+
+def get_settings_keyboard(db: DB_actions, chat_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    
+    for setting_key in SETTINGS_NAMES.keys():
+        is_disabled = db.get_setting(chat_id, setting_key)
+        status = "❌" if is_disabled else "✅"
+        emoji = SETTINGS_EMOJI[setting_key]
+        name = SETTINGS_NAMES[setting_key]
+        
+        builder.button(
+            text=f"{emoji} {name}: {status}",
+            callback_data=f"setting:{setting_key}"
+        )
+    
+    builder.adjust(1) 
+    
+    builder.row(
+        InlineKeyboardButton(text="❌ Close", callback_data="close")
+    )
+    
+    return builder.as_markup()
+
+
+@router.message(Command("settings"))
+async def cmd_settings(message: types.Message):
+    chat_id = message.chat.id
+    
+    if message.chat.type in ['group', 'supergroup']:
+        user = await message.bot.get_chat_member(chat_id, message.from_user.id)
+        if user.status not in ['creator', 'administrator']:
+            await message.answer("⚠️ Only administrators can change bot settings in group chats.")
+            return
+    
+    text = (
+        "⚙️ <b>Bot Settings</b>\n\n"
+        "Select a feature to enable/disable:\n"
+        "✅ - feature enabled\n"
+        "❌ - feature disabled"
+    )
+    
+    keyboard = get_settings_keyboard(db, chat_id)
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")

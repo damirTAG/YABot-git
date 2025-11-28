@@ -8,7 +8,11 @@ IGNORE_CHAT_IDS = [-1001559555304, -1001919227306, -1001987624296, -100205026627
 # -- UI TEXT --
 SAVED           = "🔥 This {} saved. Call @yerzhanakh_bot in inline to send it in any chat"
 BASE_ERROR      = f"<i>Sorry, failed to proceed this request</i>"
-UPDATE_NOTIFY   = "Fixed: SoundCloud searching"
+UPDATE_NOTIFY = (
+    "⚡ <b>Update: /settings Command</b>\n\n"
+    "The bot now has a <i>full settings panel</i> accessible via <code>/settings</code>. "
+    "You can toggle/disable features like voice messages, quotes, TikTok video sound downloads, coins converter, /roll, and GPT responses instantly using the buttons."
+)
 HELP            = """<b>Supporting services:</b>
 <i>🔴 YouTube Video/Shorts
 🔵 Instagram Reels/Posts

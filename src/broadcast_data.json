@@ -1,0 +1,59 @@
+{
+    "broadcasts": {
+        "1759704403": {
+            "message": "Fixed: SoundCloud searching, Instagram reels (not sure)",
+            "include_vote": true,
+            "created_at": "2025-10-06T03:46:43.501942",
+            "status": "pending",
+            "stats": {
+                "total": 0,
+                "sent": 0,
+                "failed": 0,
+                "blocked": 0,
+                "not_found": 0,
+                "rate_limited": 0
+            }
+        },
+        "1759704552": {
+            "message": "Fixed: SoundCloud searching, Instagram reels (not sure)",
+            "include_vote": true,
+            "created_at": "2025-10-06T03:49:12.905853",
+            "status": "pending",
+            "stats": {
+                "total": 63,
+                "sent": 42,
+                "failed": 4,
+                "blocked": 0,
+                "not_found": 17,
+                "rate_limited": 0
+            }
+        }
+    },
+    "votes": {
+        "1759704403": {
+            "1078179922": {
+                "vote": "No",
+                "timestamp": "2025-10-06T03:49:24.311490"
+            }
+        },
+        "1759704552": {
+            "-4917336609": {
+                "vote": "Yes",
+                "timestamp": "2025-10-06T03:49:34.977546"
+            },
+            "-4869469288": {
+                "vote": "Yes",
+                "timestamp": "2025-10-06T03:49:52.583983"
+            },
+            "-1003057685440": {
+                "vote": "No",
+                "timestamp": "2025-10-06T03:49:52.946400"
+            },
+            "-4603562902": {
+                "vote": "No",
+                "timestamp": "2025-10-06T03:50:18.964962"
+            }
+        }
+    },
+    "stats": {}
+}

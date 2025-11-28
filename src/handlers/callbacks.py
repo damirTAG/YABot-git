@@ -12,8 +12,9 @@ from database.repo          import DB_actions
 from database.cache         import cache
 from utils.helpers          import build_saved_files_keyboard, build_file_action_keyboard, build_delete_confirmation_keyboard
 
-from services.yandexmusic   import YandexMusicSDK, TrackData
+from services.yandexmusic   import YandexMusicSDK
 from services.soundcloud    import SoundCloudTool
+from handlers.commands      import get_settings_keyboard, SETTINGS_NAMES, SETTINGS_EMOJI
 
 
 router  = Router()
@@ -392,3 +393,40 @@ async def download_soundcl_track(callback_query: types.CallbackQuery, bot: Bot):
                 os.remove(file_path)
             except Exception as e:
                 logger.error(f'Failed to remove temporary file {file_path}: {e}')
+
+
+@router.callback_query(F.data.startswith("setting:"))
+async def callback_toggle_setting(callback: types.CallbackQuery):
+    chat_id = callback.message.chat.id
+    
+    if callback.message.chat.type in ['group', 'supergroup']:
+        user = await callback.bot.get_chat_member(chat_id, callback.from_user.id)
+        if user.status not in ['creator', 'administrator']:
+            await callback.answer("⚠️ Only admins can change settings", show_alert=True)
+            return
+    
+    setting_key = callback.data.split(":", 1)[1]
+    
+    if setting_key not in SETTINGS_NAMES:
+        await callback.answer("❌ Unknown setting", show_alert=True)
+        return
+    
+    # Переключаем настройку
+    new_value = db.toggle_setting(chat_id, setting_key)
+    
+    status = "disabled" if new_value else "enabled"
+    emoji = SETTINGS_EMOJI[setting_key]
+    name = SETTINGS_NAMES[setting_key]
+    
+    keyboard = get_settings_keyboard(db, chat_id)
+    
+    text = (
+        "⚙️ <b>Bot Settings</b>\n\n"
+        "Select a feature to enable/disable:\n"
+        "✅ - feature enabled\n"
+        "❌ - feature disabled"
+    )
+    
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    
+    await callback.answer(f"{emoji} {name} {status}", show_alert=False)

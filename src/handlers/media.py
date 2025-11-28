@@ -5,6 +5,7 @@ import shutil
 import pytz
 import yt_dlp as ytd
 import aiohttp
+import asyncio
 
 from datetime           import datetime
 
@@ -79,10 +80,15 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
                         reply_to_message_id=message.message_id,
                         reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None
                     )
-                post_data: metadata = await tt.download(link)
+                
+                await tt._ensure_data(link)
+                
+                post_data, sound = await asyncio.gather(
+                    tt.download(link),
+                    tt.download_sound(link)
+                )
                 
                 if post_data.type == 'images': # ? images
-                    sound = await tt.download_sound(link)
                     media_list = []
                     for img in post_data.media:
                         media_list.append(InputMediaPhoto(media=types.FSInputFile(img)))
@@ -110,13 +116,15 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
                     if media_list and sound:
                         shutil.rmtree(post_data.dir_name)
                         os.remove(sound)
-                elif post_data.type == 'video': # ? video
+                        
+                elif post_data.type == 'video':
                     try:
                         caption = '<i>via @yerzhanakh_bot</i>'
+
                         video = await bot.send_video(
-                            chat_id=chat_id, 
-                            caption=caption, 
-                            reply_to_message_id=message.message_id, 
+                            chat_id=chat_id,
+                            caption=caption,
+                            reply_to_message_id=message.message_id,
                             video=types.FSInputFile(post_data.media),
                             supports_streaming=True,
                             duration=post_data.duration,
@@ -124,16 +132,41 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
                             height=post_data.height,
                             reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None
                         )
+
+                        try:
+                            if db.get_setting(chat_id, "tiktok_send_sound_videos_disabled"):
+                                return
+
+                            await bot.send_audio(
+                                chat_id=chat_id,
+                                audio=types.FSInputFile(sound),
+                                reply_to_message_id=message.message_id,
+                                reply_markup=SAVE_BUTTON if message.chat.type == 'private' else None,
+                                title=str(sound.split('.')[0])
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to send sound: {e}")
+
                         if video:
-                            sended_media = await bot.copy_message(CACHE_CHAT, chat_id, video.message_id)
-                            db.save_to_cache(sended_media.message_id, link)
-                            os.remove(post_data.media)
-                    except exceptions.TelegramNetworkError:
-                        await message.reply('Sorry the file is too large')
+                            cached_video = await bot.copy_message(CACHE_CHAT, chat_id, video.message_id)
+                            db.save_to_cache(link, cached_video.message_id)
+
                         os.remove(post_data.media)
-                        logger.error(f'tiktok file too large') 
-                    except Exception as e:   
-                        logger.exception(f'ERROR DOWNLOADING TIKTOK VIDEO: {e}\nTraceback: {traceback.print_exc()}') 
+                        os.remove(sound)
+
+                    except exceptions.TelegramNetworkError:
+                        await message.reply('Sorry, the file is too large.')
+                        logger.error(f'TikTok file too large: {link}')
+                        for f in (post_data.media, sound):
+                            if os.path.exists(f):
+                                os.remove(f)
+
+                    except Exception as e:
+                        logger.exception(f'ERROR DOWNLOADING TIKTOK VIDEO: {e}\nTraceback: {traceback.print_exc()}')
+                        for f in (post_data.media, sound):
+                            if os.path.exists(f):
+                                os.remove(f)
+
                     
         except Exception as e:
             logger.exception(f'ERROR DOWNLOADING TIKTOK: {e}\nTraceback: {traceback.print_exc()}')
