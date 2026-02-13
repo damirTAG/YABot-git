@@ -113,8 +113,9 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
                             logger.info(f"Error with sound sending: {e}")
                     else:
                         await message.reply("❌ Failed to retrieve any images.")
-                    if media_list and sound:
+                    if media_list:
                         shutil.rmtree(post_data.dir_name)
+                    if sound:
                         os.remove(sound)
                         
                 elif post_data.type == 'video':
@@ -149,7 +150,7 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
 
                         if video:
                             cached_video = await bot.copy_message(CACHE_CHAT, chat_id, video.message_id)
-                            db.save_to_cache(link, cached_video.message_id)
+                            db.save_to_cache(cached_video.message_id, link)
 
                         os.remove(post_data.media)
                         os.remove(sound)
@@ -512,8 +513,8 @@ async def yandex_music_link_handler(m: types.Message):
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="⬇️ Download", callback_data=f"yandex_{track.id}")],
-                [InlineKeyboardButton(text="❌ Close", callback_data="close")]
+                [InlineKeyboardButton(text="⬇️ Download", callback_data=f"yandex_{track.id}", style="primary")],
+                [InlineKeyboardButton(text="❌ Close", callback_data="close", style="danger")]
             ]
         )
         

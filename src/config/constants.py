@@ -106,16 +106,16 @@ COOL_PHRASES = [
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 SAVE_BUTTON             = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Save", callback_data="save")]
+    [InlineKeyboardButton(text="Save", callback_data="save", style="primary")]
 ])
 
 SAVED_BUTTON            = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Saved", callback_data="save")]
+        [InlineKeyboardButton(text="Saved", callback_data="save", style="success")]
     ]
 )
 
 CLOSE_BUTTON            = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="❌ Close", callback_data="close")]
+    [InlineKeyboardButton(text="Close", callback_data="close", style="danger")]
 ])
 
 ADMIN_KEYBOARD          = InlineKeyboardMarkup(inline_keyboard=[

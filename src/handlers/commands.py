@@ -289,6 +289,7 @@ async def soundsearch(message: types.Message, command: CommandObject):
 # make quote handler
 quote_pattern = r'^[/\.](q|й)$'
 @router.message(RegexFilter(quote_pattern))
+@log('QUOTE_MAKER')
 async def makequote_handler(message: types.Message, bot: Bot):
     if db.get_setting(message.chat.id, "quote_disabled"):
         return
@@ -332,7 +333,7 @@ def get_settings_keyboard(db: DB_actions, chat_id: int) -> InlineKeyboardMarkup:
     builder.adjust(1) 
     
     builder.row(
-        InlineKeyboardButton(text="❌ Close", callback_data="close")
+        InlineKeyboardButton(text="Close", callback_data="close", style="danger")
     )
     
     return builder.as_markup()
