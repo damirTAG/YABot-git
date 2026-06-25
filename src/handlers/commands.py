@@ -171,11 +171,11 @@ async def ask_handler(m: types.Message, command: CommandObject):
     else:
         await temp_msg.delete()
         await m.reply(
-            f"{user.full_name} asked for: <code>{query}</code>\n\n*Response failed =(*",
+            f"{user.full_name} asked for: `{query}`\n\n*Response failed =(*",
             reply_markup=FAILED_BUTTON,
             parse_mode="Markdown",
         )
-
+    
 
 @router.message(Command("saved"))
 @log("SAVED")
