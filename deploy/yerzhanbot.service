@@ -9,7 +9,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=yerzhan
+User=root
 WorkingDirectory=/opt/yerzhanbot_stable
 EnvironmentFile=/opt/yerzhanbot_stable/.env
 # Modules import top-level (from config import ...), so src/ must be on PYTHONPATH.
