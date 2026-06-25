@@ -317,6 +317,7 @@ SETTINGS_EMOJI = {
     "coins_converter_disabled": "💰",
     "roll_disabled": "🎲",
     "gpt_disabled": "🤖",
+    "joke_disabled": "🃏",
 }
 
 SETTINGS_NAMES = {
@@ -325,7 +326,8 @@ SETTINGS_NAMES = {
     "coins_converter_disabled": "Currency Converter",
     "quote_disabled": "Quote Maker (/q)",
     "roll_disabled": "Roll Number (/roll)",
-    "gpt_disabled": "GPT Responses (/ask)",
+    "gpt_disabled": "AI Responses (/ask)",
+    "joke_disabled": "Joke Ratings (/joke)",
 }
 
 
@@ -357,10 +359,7 @@ async def cmd_settings(message: types.Message):
             await message.answer("⚠️ Only administrators can change bot settings in group chats.")
             return
 
-    text = (
-        "⚙️ <b>Bot Settings</b>\n\n"
-        "Select a feature to enable/disable:"
-    )
+    text = "⚙️ <b>Bot Settings</b>\n\nSelect a feature to enable/disable:"
 
     keyboard = get_settings_keyboard(db, chat_id)
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")

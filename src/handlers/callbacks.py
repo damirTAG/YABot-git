@@ -430,10 +430,7 @@ async def callback_toggle_setting(callback: types.CallbackQuery):
 
     keyboard = get_settings_keyboard(db, chat_id)
 
-    text = (
-        "⚙️ <b>Bot Settings</b>\n\n"
-        "Select a feature to enable/disable:"
-    )
+    text = "⚙️ <b>Bot Settings</b>\n\nSelect a feature to enable/disable:"
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
 

@@ -9,9 +9,14 @@ IGNORE_CHAT_IDS = [-1001559555304, -1001919227306, -1001987624296, -100205026627
 SAVED = "🔥 This {} saved. Call @yerzhanakh_bot in inline to send it in any chat"
 BASE_ERROR = "<i>Sorry, failed to proceed this request</i>"
 UPDATE_NOTIFY = (
-    "⚡ <b>Update: /settings Command</b>\n\n"
-    "The bot now has a <i>full settings panel</i> accessible via <code>/settings</code>. "
-    "You can toggle/disable features like voice messages, quotes, TikTok video sound downloads, coins converter, /roll, and GPT responses instantly using the buttons."
+    "⚡ <b>Update: /joke Command (only for group chats)</b>\n\n"
+    "Rate the chat's jokes! Reply to any message with <code>/joke</code> and the bot "
+    "starts a poll where everyone rates it from <b>0 to 10</b>.\n\n"
+    "🏆 Every <b>Sunday 23:40 (UTC+5)</b> the bot posts a weekly leaderboard — best joker, "
+    "most bullshit, most active, and the funniest joke of the week.\n"
+    "📊 Check anyone's stats with <code>/jokestats</code> (reply to see someone else's).\n\n"
+    "<i>Admins can turn this off anytime via</i> <code>/settings</code>.\n\n"
+    "I also fixed AI responses (/ask and inline), but it may be not stable yet."
 )
 HELP = """<b>Supporting services:</b>
 <i>🔴 YouTube Video/Shorts

@@ -8,6 +8,7 @@ from config import ACTIVE_BOT_TOKEN, logger
 from database.repo import DB_actions
 from handlers import setup_routers
 from services.coins import init_coins_apis
+from services.jokes import weekly_joke_scheduler
 
 
 async def main():
@@ -26,6 +27,9 @@ async def main():
     setup_routers(dp)
     logger.info("Initializing coins data...")
     await init_coins_apis()
+
+    # Background task: weekly joke leaderboard (Sunday 23:40 Asia/Almaty)
+    asyncio.create_task(weekly_joke_scheduler(bot))
 
     # Log bot startup
     logger.info("Starting bot...")
