@@ -33,14 +33,16 @@ migrations, no data loss.
 ## Deployment (VPS)
 
 Pushes to the `prod` branch trigger [`.github/workflows/deploy.yaml`](.github/workflows/deploy.yaml),
-which SSHes to the VPS and, in `DEPLOY_DIR`:
+which **rsyncs** the checked-out code into `DEPLOY_DIR` (no git needed on the
+VPS) and then, over SSH:
 
 ```bash
-git fetch --all --prune
-git reset --hard origin/prod
 uv sync --frozen --no-dev
 sudo systemctl restart yerzhanbot
 ```
+
+The rsync excludes `.env`, `.venv`, and runtime dirs, so they're preserved on
+the server across deploys. `DEPLOY_DIR` only needs to exist and contain `.env`.
 
 ### One-time VPS setup
 
@@ -49,24 +51,29 @@ sudo systemctl restart yerzhanbot
    curl -LsSf https://astral.sh/uv/install.sh | sh
    sudo apt-get update && sudo apt-get install -y ffmpeg
    ```
-2. Clone the repo into the deploy dir and check out `prod`:
+2. Create the deploy dir and its `.env` (the workflow rsyncs the code in):
    ```bash
-   git clone https://github.com/damirtag/YABot-git.git /opt/yerzhanbot
-   cd /opt/yerzhanbot && git checkout prod
+   sudo mkdir -p /opt/yerzhanbot_stable && sudo chown "$USER" /opt/yerzhanbot_stable
+   # create /opt/yerzhanbot_stable/.env from example.env (real tokens; DB_HOST=localhost)
    ```
-3. Create `/opt/yerzhanbot/.env` from `example.env` (real tokens; `DB_HOST=localhost`).
-4. Install deps: `uv sync --frozen --no-dev`.
-5. Install the service (adjust `User`/paths in the unit first):
+3. Trigger one deploy (push to `prod` or "Run workflow") to populate the dir,
+   then install deps and the service:
    ```bash
-   sudo cp deploy/yerzhanbot.service /etc/systemd/system/
+   cd /opt/yerzhanbot_stable
+   uv sync --frozen --no-dev
+   sudo cp deploy/yerzhanbot.service /etc/systemd/system/   # check User/paths
    sudo systemctl daemon-reload
    sudo systemctl enable --now yerzhanbot
    ```
-6. Allow the deploy user to restart the service without a password — add a
+4. Allow the deploy user to restart the service without a password — add a
    sudoers drop-in (`sudo visudo -f /etc/sudoers.d/yerzhanbot`):
    ```
    <deploy_user> ALL=(root) NOPASSWD: /usr/bin/systemctl restart yerzhanbot, /usr/bin/systemctl status yerzhanbot
    ```
+
+> Running this **alongside** the existing bot? Give it its own service name
+> (e.g. `yerzhanbot-stable.service`) and a separate `TEST_BOT_TOKEN` in `.env`
+> so the two don't fight over Telegram long-polling.
 
 ### Required GitHub Actions secrets
 
@@ -76,14 +83,12 @@ sudo systemctl restart yerzhanbot
 | `VPS_USER` | SSH user (the deploy user) |
 | `VPS_SSH_KEY` | Private key for that user |
 | `VPS_PORT` | SSH port (optional, defaults to 22) |
-| `DEPLOY_DIR` | Repo dir on the VPS (e.g. `/opt/yerzhanbot`) |
-
-The VPS git checkout must be able to `git fetch origin` (public HTTPS, or a
-deploy key for a private repo).
+| `DEPLOY_DIR` | Deploy dir on the VPS (e.g. `/opt/yerzhanbot_stable`) |
 
 ### Logs & rollback
 
 ```bash
 journalctl -u yerzhanbot -f          # live logs (also written to src/logs/bot.log)
-cd /opt/yerzhanbot && git reset --hard <old-sha> && uv sync --frozen --no-dev && sudo systemctl restart yerzhanbot
+# rollback: check out the previous commit locally and re-push to prod,
+# or rsync an older checkout into DEPLOY_DIR and restart the service.
 ```

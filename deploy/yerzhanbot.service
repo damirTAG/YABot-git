@@ -1,6 +1,6 @@
 # Install: copy to /etc/systemd/system/yerzhanbot.service, then
 #   sudo systemctl daemon-reload && sudo systemctl enable --now yerzhanbot
-# Adjust User and the /opt/yerzhanbot paths to match your VPS layout.
+# Adjust User and the /opt/yerzhanbot_stable paths to match your VPS layout.
 
 [Unit]
 Description=Yerzhan Telegram bot
@@ -10,12 +10,12 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=yerzhan
-WorkingDirectory=/opt/yerzhanbot
-EnvironmentFile=/opt/yerzhanbot/.env
+WorkingDirectory=/opt/yerzhanbot_stable
+EnvironmentFile=/opt/yerzhanbot_stable/.env
 # Modules import top-level (from config import ...), so src/ must be on PYTHONPATH.
-Environment=PYTHONPATH=/opt/yerzhanbot/src
+Environment=PYTHONPATH=/opt/yerzhanbot_stable/src
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/yerzhanbot/.venv/bin/python src/app.py
+ExecStart=/opt/yerzhanbot_stable/.venv/bin/python src/app.py
 Restart=always
 RestartSec=5
 
