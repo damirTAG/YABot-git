@@ -7,3 +7,7 @@ games/
 fastapi/
 .env
 yt_video/
+.venv
+.vscode
+.ruff_cache
+.claude

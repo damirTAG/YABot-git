@@ -1,0 +1,69 @@
+[project]
+name = "yerzhanbot"
+version = "0.1.0"
+description = "Yerzhan — Telegram multifunc bot"
+readme = "README.MD"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "aiogram",
+    "aiohttp",
+    "aiofiles",
+    "Babel",
+    "Brotli",
+    "magic-filter",
+    "mutagen",
+    "pycryptodomex",
+    "pytz",
+    "websockets",
+    "yt-dlp[default]>=2026.6.9",
+    "SpeechRecognition",
+    "tinytag",
+    "tqdm",
+    "beautifulsoup4",
+    "pillow",
+    "tenacity",
+    "ffmpeg-python",
+    "yandex-music",
+    "cachetools",
+    "python-dotenv",
+    "psycopg2-binary",
+    "pilmoji",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "ty>=0.0.1a1",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",  # line length handled by formatter; long strings/URLs are fine
+    "B008",  # function calls in argument defaults (common in aiogram handlers)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "handlers", "services", "database", "utils"]
+
+[tool.ty.environment]
+python-version = "3.13"
+root = ["./src"]
+
+[tool.ty.rules]
+# Start lenient: surface issues without failing the build. Tighten over time.
+# The bulk of current diagnostics come from dynamic aiogram attributes and the
+# `from .settings import *` star export, so downgrade the noisiest to warnings.
+unresolved-attribute = "warn"
+unresolved-import = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+invalid-parameter-default = "warn"

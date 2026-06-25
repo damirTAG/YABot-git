@@ -1,4 +1,4 @@
-from .settings  import *
-from .logger    import setup_logging
+from .logger import setup_logging
+from .settings import *  # noqa: F403
 
 logger = setup_logging()

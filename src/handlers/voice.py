@@ -1,44 +1,46 @@
-import time, os
+import os
+import time
 
-from aiogram            import Bot, Router, F, types
+from aiogram import Bot, F, Router, types
 
-from config             import logger
-from services.convert   import Converter
-from database.repo      import DB_actions
-from utils.decorators   import log
+from config import logger
+from database.repo import DB_actions
+from services.convert import Converter
+from utils.decorators import log
 
-router  = Router()
-db      = DB_actions()
+router = Router()
+db = DB_actions()
 
-@router.message(F.content_type.in_({'voice', 'video_note'}))
-@log('SPEECH_REC')
+
+@router.message(F.content_type.in_({"voice", "video_note"}))
+@log("SPEECH_REC")
 async def get_audio_messages(message: types.Message, bot: Bot):
     if db.get_setting(message.chat.id, "voice_disabled"):
         return
-    
+
     file_name = None
     converter = None
-    
+
     try:
         start_time = time.time()
         msg = await message.reply("<i>Recognizing ... </i>")
 
         file_id = (
-            message.voice.file_id 
-            if message.content_type in ['voice'] 
+            message.voice.file_id
+            if message.content_type in ["voice"]
             else message.video_note.file_id
         )
         file_info = await bot.get_file(file_id)
-        
+
         downloaded_file = await bot.download_file(file_info.file_path)
-        file_name = str(message.message_id) + '.ogg'
-        
+        file_name = str(message.message_id) + ".ogg"
+
         name = message.chat.first_name if message.chat.first_name else message.chat.title
         if not name:
-            name = 'No_title'
+            name = "No_title"
         logger.info(f"Chat {name} (ID: {message.chat.id}) download file {file_name}")
 
-        with open(file_name, 'wb') as new_file:
+        with open(file_name, "wb") as new_file:
             new_file.write(downloaded_file.getvalue())
 
         converter = Converter(file_name)
@@ -47,11 +49,11 @@ async def get_audio_messages(message: types.Message, bot: Bot):
         end_time = time.time()
         taken_time = round(end_time - start_time, 2)
 
-        message_text = f'<i>{recognized_text}</i>\n\n<code>{taken_time} sec</code>'
+        message_text = f"<i>{recognized_text}</i>\n\n<code>{taken_time} sec</code>"
         await msg.edit_text(text=message_text)
-        
+
     except Exception as e:
-        logger.error(f'[audio_recognizer] Error: {e}')
+        logger.error(f"[audio_recognizer] Error: {e}")
         await msg.delete()
     finally:
         # Clean up resources

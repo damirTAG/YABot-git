@@ -1,10 +1,12 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-env_path = Path('.') / '.env'
+env_path = Path(".") / ".env"
 load_dotenv(dotenv_path=env_path)
+
 
 # Helper for env
 def get_env(key, default=None, required=False):
@@ -13,8 +15,9 @@ def get_env(key, default=None, required=False):
         raise ValueError(f"Environment variable {key} is required but not set")
     return value
 
+
 # Application environment
-ENV = get_env("ENV", "testing")  
+ENV = get_env("ENV", "testing")
 DEBUG = ENV == "testing"
 
 # Bot configuration
@@ -28,7 +31,7 @@ OPEN_AI_TOKEN = get_env("OPEN_AI_TOKEN")
 AUDIO_MODEL_KEY = get_env("AUDIO_MODEL_KEY")
 YANDEX_MUSIC_TOKEN = get_env("YANDEX_MUSIC_TOKEN")
 
-# Instagram credentials 
+# Instagram credentials
 INST_USERNAME = get_env("INST_USERNAME")
 INST_PASS = get_env("INST_PASS")
 

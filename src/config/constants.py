@@ -1,19 +1,19 @@
-GH_REPO: str    = "https://github.com/damirTAG/YABot-git"
-# -- IDS -- 
-DAMIR_USER_ID   = 1038468423
-CACHE_CHAT      = -1001911592881
-IGNORE_CHAT_IDS = [-1001559555304, -1001919227306, -1001987624296, -1002050266275]   
+GH_REPO: str = "https://github.com/damirTAG/YABot-git"
+# -- IDS --
+DAMIR_USER_ID = 1038468423
+CACHE_CHAT = -1001911592881
+IGNORE_CHAT_IDS = [-1001559555304, -1001919227306, -1001987624296, -1002050266275]
 # -1001559555304, -1001919227306, -1001987624296
 
 # -- UI TEXT --
-SAVED           = "🔥 This {} saved. Call @yerzhanakh_bot in inline to send it in any chat"
-BASE_ERROR      = f"<i>Sorry, failed to proceed this request</i>"
+SAVED = "🔥 This {} saved. Call @yerzhanakh_bot in inline to send it in any chat"
+BASE_ERROR = "<i>Sorry, failed to proceed this request</i>"
 UPDATE_NOTIFY = (
     "⚡ <b>Update: /settings Command</b>\n\n"
     "The bot now has a <i>full settings panel</i> accessible via <code>/settings</code>. "
     "You can toggle/disable features like voice messages, quotes, TikTok video sound downloads, coins converter, /roll, and GPT responses instantly using the buttons."
 )
-HELP            = """<b>Supporting services:</b>
+HELP = """<b>Supporting services:</b>
 <i>🔴 YouTube Video/Shorts
 🔵 Instagram Reels/Posts
 🔵 VK Clips
@@ -38,7 +38,7 @@ HELP            = """<b>Supporting services:</b>
 🪙 <i>Coins Converter</i> converts crypto and fiat currencies instantly! 
 Example usage: <code>1 SOL</code> | <code>50 TON RUB</code> | <code>50 USD KZT</code>
 """
-INFO            = (
+INFO = (
     "📊 Hey there! Here are the current stats:\n\n"
     "🔥 {most_downloaded} is the most popular source with {most_downloaded_count:,} downloads\n\n"
     "Downloads from other platforms:\n"
@@ -52,9 +52,9 @@ INFO            = (
     "❤️ Thanks for using the bot! Any suggestions? Feel free to contact @damirtag"
     f"\n\n<i>Bot's source-code available on</i> <b><a href='{GH_REPO}'>GitHub</a></b>"
 )
-ARE_YOU_SURE_STICKER_ID = 'CAACAgIAAxkBAAIH22geNVJr-3S_AjeP6c66NFrUu-5OAAI1dwAC7cXxSlIE1lAabmYFNgQ'
+ARE_YOU_SURE_STICKER_ID = "CAACAgIAAxkBAAIH22geNVJr-3S_AjeP6c66NFrUu-5OAAI1dwAC7cXxSlIE1lAabmYFNgQ"
 
-# -- VARS -- 
+# -- VARS --
 MAX_GPT_QUERY_LENGTH: int = 150
 ADMIN_USERS_PER_PAGE: int = 10
 CHATGPT_ROLE: str = """
@@ -98,39 +98,40 @@ COOL_PHRASES = [
     "эээ блютуз кто такой",
     "фимоз",
     "а мне мощные сиське дороже родины",
-    "это в жизни ты дохуя смелый, а в инете смож меня уделать?"
+    "это в жизни ты дохуя смелый, а в инете смож меня уделать?",
 ]
 
 
 # -- BUTTONS --
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup  # noqa: E402
 
-SAVE_BUTTON             = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Save", callback_data="save", style="primary")]
-])
+SAVE_BUTTON = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="Save", callback_data="save", style="primary")]]
+)
 
-SAVED_BUTTON            = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Saved", callback_data="save", style="success")]
+SAVED_BUTTON = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="Saved", callback_data="save", style="success")]]
+)
+
+CLOSE_BUTTON = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="Close", callback_data="close", style="danger")]]
+)
+
+ADMIN_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh_admin")],
+        [InlineKeyboardButton(text="👥 View All Users", callback_data="view_users:0")],
     ]
 )
 
-CLOSE_BUTTON            = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Close", callback_data="close", style="danger")]
-])
+GENERATING_BUTTON = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="⏳ Generating...", callback_data="waiting")]]
+)
 
-ADMIN_KEYBOARD          = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh_admin")],
-    [InlineKeyboardButton(text="👥 View All Users", callback_data="view_users:0")]
-])
+FAILED_BUTTON = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="❌ Failed", callback_data="failed")]]
+)
 
-GENERATING_BUTTON       = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='⏳ Generating...', callback_data='waiting')]
-])
-
-FAILED_BUTTON           = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='❌ Failed', callback_data='failed')]
-])
-
-PM_BUTTON               = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='Open PM', url='https://t.me/yerzhanakh_bot')]
-])
+PM_BUTTON = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="Open PM", url="https://t.me/yerzhanakh_bot")]]
+)

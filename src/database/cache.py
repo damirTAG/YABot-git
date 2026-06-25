@@ -1,5 +1,7 @@
 from cachetools import TTLCache
-from config     import logger
+
+from config import logger
+
 
 class Base:
     def __init__(self):
@@ -34,5 +36,6 @@ class Base:
             logger.info(f"Cache {cache_name} cleared")
         else:
             logger.error(f"Cache {cache_name} not found")
+
 
 cache = Base()

@@ -1,24 +1,21 @@
-import uuid, time
+import time
+import uuid
 
-from aiogram            import Router, types, Bot
-from aiogram.types      import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram import Bot, Router, types
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from config             import logger
-from utils.decorators   import log
-from config.constants   import (
-    MAX_GPT_QUERY_LENGTH,
-    FAILED_BUTTON,
-    GENERATING_BUTTON
-)
-from database.repo      import DB_actions
-from services.openai    import generate_response
+from config import logger
+from config.constants import FAILED_BUTTON, GENERATING_BUTTON, MAX_GPT_QUERY_LENGTH
+from database.repo import DB_actions
+from services.openai import generate_response
+from utils.decorators import log
 
-
-router  = Router()
-db      = DB_actions()
+router = Router()
+db = DB_actions()
 
 
 user_queries: dict = {}
+
 
 @router.inline_query(lambda query: query.query.lower().startswith("ask "))
 async def chatgpt_inline_handler(inline_query: types.InlineQuery, bot: Bot):
@@ -28,7 +25,7 @@ async def chatgpt_inline_handler(inline_query: types.InlineQuery, bot: Bot):
     user = inline_query.from_user
 
     if len(user_input) < 3:
-        return  
+        return
 
     try:
         result_id = uuid.uuid4().hex[:8]
@@ -40,22 +37,18 @@ async def chatgpt_inline_handler(inline_query: types.InlineQuery, bot: Bot):
             input_message_content=types.InputTextMessageContent(
                 message_text=f"{user.full_name} asking for: <code>{user_input}</code>"
             ),
-            reply_markup=GENERATING_BUTTON
+            reply_markup=GENERATING_BUTTON,
         )
 
-        await bot.answer_inline_query(
-            inline_query.id, 
-            results=[item], 
-            cache_time=0
-        )
-        logger.info(f'{user.full_name} [{user.username}]: Asking for {user_input}')
+        await bot.answer_inline_query(inline_query.id, results=[item], cache_time=0)
+        logger.info(f"{user.full_name} [{user.username}]: Asking for {user_input}")
 
     except Exception as e:
         logger.error(f"Error in inline handler: {e}")
 
 
 @router.chosen_inline_result(lambda chosen: chosen.query.lower().startswith("ask "))
-@log('CHATGPT')
+@log("CHATGPT")
 async def chatgpt_chosen_inline_handler(chosen_inline_query: types.ChosenInlineResult, bot: Bot):
     try:
         message_id = chosen_inline_query.inline_message_id
@@ -74,61 +67,59 @@ async def chatgpt_chosen_inline_handler(chosen_inline_query: types.ChosenInlineR
         if response:
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text=f'✅ {taken_time} sec', callback_data='confirmed')]
+                    [InlineKeyboardButton(text=f"✅ {taken_time} sec", callback_data="confirmed")]
                 ]
             )
             await bot.edit_message_text(
                 inline_message_id=message_id,
                 text=f"{user_name} asked for: `{user_prompt}`\n\n*Answer:*\n{response}",
                 parse_mode="Markdown",
-                reply_markup=keyboard
+                reply_markup=keyboard,
             )
         else:
             await bot.edit_message_text(
                 inline_message_id=message_id,
                 text=f"{user_name} asked for: `{user_prompt}`\n\n*Response failed =(*",
                 parse_mode="Markdown",
-                reply_markup=FAILED_BUTTON
+                reply_markup=FAILED_BUTTON,
             )
         del user_queries[result_id]
 
     except Exception as e:
         logger.error(f"Error in chosen inline handler: {e}")
 
+
 # Fix for general inline handler
 @router.inline_query()
-async def inline_get_file(query: types.InlineQuery):        
+async def inline_get_file(query: types.InlineQuery):
     PAGE_SIZE = 50
     user_id = query.from_user.id
     offset = int(query.offset) if query.offset else 0
 
-    
     files = db.execute_query(
         "SELECT file_id, type FROM user_saved WHERE user_id = ? LIMIT ? OFFSET ?",
-        (user_id, PAGE_SIZE, offset)
+        (user_id, PAGE_SIZE, offset),
     )
 
     if files:
-        print(f'User_id: {user_id} Found {len(files)}')
+        print(f"User_id: {user_id} Found {len(files)}")
 
     results = []
     for file_id, file_type in files:
         res_id = uuid.uuid4().hex[:8]
         if file_type.startswith("video"):
             result = types.InlineQueryResultCachedVideo(
-                id=res_id, video_file_id=file_id, title='Saved Video'
+                id=res_id, video_file_id=file_id, title="Saved Video"
             )
         elif file_type.startswith("audio"):
-            result = types.InlineQueryResultCachedAudio(
-                id=res_id, audio_file_id=file_id
-            )
+            result = types.InlineQueryResultCachedAudio(id=res_id, audio_file_id=file_id)
         elif file_type.startswith("voice"):
             result = types.InlineQueryResultCachedVoice(
-                id=res_id, voice_file_id=file_id, title='Saved Voice'
+                id=res_id, voice_file_id=file_id, title="Saved Voice"
             )
         else:
             result = types.InlineQueryResultCachedDocument(
-                id=res_id, document_file_id=file_id, title='Saved Doc'
+                id=res_id, document_file_id=file_id, title="Saved Doc"
             )
 
         results.append(result)

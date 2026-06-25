@@ -1,12 +1,7 @@
 from aiogram import Dispatcher
 
-from . import admin
-from . import commands
-from . import voice
-from . import common
-from . import media
-from . import callbacks
-from . import inline
+from . import admin, callbacks, commands, common, inline, media, voice
+
 
 def setup_routers(dp: Dispatcher):
     """Set up all handlers."""
