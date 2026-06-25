@@ -46,6 +46,32 @@ youtube = YouTubeSDK(
 # -- brainrot platforms first --
 
 
+def _cleanup_tiktok_files(tt, post_data, sound):
+    """Remove downloaded TikTok media after sending.
+
+    Runs from a ``finally`` so it cleans up on success, on early exits, and on
+    failures alike — including empty/partial image dirs left behind when a
+    download fails mid-way (falls back to the post id for the dir name).
+    """
+    try:
+        dir_name = None
+        if post_data is not None and post_data.type == "images":
+            dir_name = post_data.dir_name
+        elif getattr(tt, "result", None) and "images" in tt.result:
+            dir_name = tt.result.get("id")
+        if dir_name and os.path.isdir(dir_name):
+            shutil.rmtree(dir_name, ignore_errors=True)
+
+        if post_data is not None and post_data.type == "video" and post_data.media:
+            if os.path.exists(post_data.media):
+                os.remove(post_data.media)
+
+        if sound and os.path.exists(sound):
+            os.remove(sound)
+    except Exception as e:
+        logger.warning(f"TikTok cleanup failed: {e}")
+
+
 @router.message(RegexFilter(Patterns.TIKTOK.value))
 @log("TIKTOK_LINKS")
 async def tiktok_downloader(message: types.Message, bot: Bot):
@@ -68,6 +94,8 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
         except AttributeError:
             pass
 
+        post_data = None
+        sound = None
         try:
             async with TikTok() as tt:
                 cache_result = db.get_cached_media(link)
@@ -83,96 +111,85 @@ async def tiktok_downloader(message: types.Message, bot: Bot):
 
                 await tt._ensure_data(link)
 
-                post_data, sound = await asyncio.gather(tt.download(link), tt.download_sound(link))
+                try:
+                    post_data, sound = await asyncio.gather(
+                        tt.download(link), tt.download_sound(link)
+                    )
 
-                if post_data.type == "images":  # ? images
-                    media_list = []
-                    for img in post_data.media:
-                        media_list.append(InputMediaPhoto(media=types.FSInputFile(img)))
+                    if post_data.type == "images":  # ? images
+                        media_list = [
+                            InputMediaPhoto(media=types.FSInputFile(img)) for img in post_data.media
+                        ]
+                        chunks = [media_list[i : i + 10] for i in range(0, len(media_list), 10)]
+                        if chunks:
+                            for chunk in chunks:
+                                await bot.send_media_group(
+                                    event_chat.id,
+                                    media=chunk,
+                                    reply_to_message_id=message.message_id,
+                                )
+                            try:
+                                await bot.send_audio(
+                                    chat_id=chat_id,
+                                    audio=types.FSInputFile(sound),
+                                    reply_to_message_id=message.message_id,
+                                    reply_markup=SAVE_BUTTON
+                                    if message.chat.type == "private"
+                                    else None,
+                                    title=str(sound.split(".")[0]),
+                                )
+                            except Exception as e:
+                                logger.info(f"Error with sound sending: {e}")
+                        else:
+                            await message.reply("❌ Failed to retrieve any images.")
 
-                    chunks = [media_list[i : i + 10] for i in range(0, len(media_list), 10)]
-                    if chunks:
-                        for chunk in chunks:
-                            await bot.send_media_group(
-                                event_chat.id, media=chunk, reply_to_message_id=message.message_id
-                            )
-                        try:
-                            await bot.send_audio(
-                                chat_id=chat_id,
-                                audio=types.FSInputFile(sound),
-                                reply_to_message_id=message.message_id,
-                                reply_markup=SAVE_BUTTON
-                                if message.chat.type == "private"
-                                else None,
-                                title=str(sound.split(".")[0]),
-                            )
-                        except Exception as e:
-                            logger.info(f"Error with sound sending: {e}")
-                    else:
-                        await message.reply("❌ Failed to retrieve any images.")
-                    if media_list:
-                        shutil.rmtree(post_data.dir_name)
-                    if sound:
-                        os.remove(sound)
-
-                elif post_data.type == "video":
-                    try:
+                    elif post_data.type == "video":
                         caption = "<i>via @yerzhanakh_bot</i>"
-
-                        video = await bot.send_video(
-                            chat_id=chat_id,
-                            caption=caption,
-                            reply_to_message_id=message.message_id,
-                            video=types.FSInputFile(post_data.media),
-                            supports_streaming=True,
-                            duration=post_data.duration,
-                            width=post_data.width,
-                            height=post_data.height,
-                            reply_markup=SAVE_BUTTON if message.chat.type == "private" else None,
-                        )
-
                         try:
-                            if db.get_setting(chat_id, "tiktok_send_sound_videos_disabled"):
-                                return
-
-                            await bot.send_audio(
+                            video = await bot.send_video(
                                 chat_id=chat_id,
-                                audio=types.FSInputFile(sound),
+                                caption=caption,
                                 reply_to_message_id=message.message_id,
+                                video=types.FSInputFile(post_data.media),
+                                supports_streaming=True,
+                                duration=post_data.duration,
+                                width=post_data.width,
+                                height=post_data.height,
                                 reply_markup=SAVE_BUTTON
                                 if message.chat.type == "private"
                                 else None,
-                                title=str(sound.split(".")[0]),
                             )
-                        except Exception as e:
-                            logger.warning(f"Failed to send sound: {e}")
+                        except exceptions.TelegramNetworkError:
+                            await message.reply("Sorry, the file is too large.")
+                            logger.error(f"TikTok file too large: {link}")
+                            video = None
 
                         if video:
+                            # Sending the sound is optional per-chat; skipping it
+                            # must NOT skip caching or cleanup (handled in finally).
+                            if not db.get_setting(chat_id, "tiktok_send_sound_videos_disabled"):
+                                try:
+                                    await bot.send_audio(
+                                        chat_id=chat_id,
+                                        audio=types.FSInputFile(sound),
+                                        reply_to_message_id=message.message_id,
+                                        reply_markup=SAVE_BUTTON
+                                        if message.chat.type == "private"
+                                        else None,
+                                        title=str(sound.split(".")[0]),
+                                    )
+                                except Exception as e:
+                                    logger.warning(f"Failed to send sound: {e}")
+
                             cached_video = await bot.copy_message(
                                 CACHE_CHAT, chat_id, video.message_id
                             )
                             db.save_to_cache(cached_video.message_id, link)
-
-                        os.remove(post_data.media)
-                        os.remove(sound)
-
-                    except exceptions.TelegramNetworkError:
-                        await message.reply("Sorry, the file is too large.")
-                        logger.error(f"TikTok file too large: {link}")
-                        for f in (post_data.media, sound):
-                            if os.path.exists(f):
-                                os.remove(f)
-
-                    except Exception as e:
-                        logger.exception(
-                            f"ERROR DOWNLOADING TIKTOK VIDEO: {e}\nTraceback: {traceback.print_exc()}"
-                        )
-                        for f in (post_data.media, sound):
-                            if os.path.exists(f):
-                                os.remove(f)
+                finally:
+                    _cleanup_tiktok_files(tt, post_data, sound)
 
         except Exception as e:
-            logger.exception(f"ERROR DOWNLOADING TIKTOK: {e}\nTraceback: {traceback.print_exc()}")
+            logger.exception(f"ERROR DOWNLOADING TIKTOK: {e}")
 
 
 @router.message(RegexFilter(Patterns.INST_REELS.value))

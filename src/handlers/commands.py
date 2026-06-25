@@ -359,9 +359,7 @@ async def cmd_settings(message: types.Message):
 
     text = (
         "⚙️ <b>Bot Settings</b>\n\n"
-        "Select a feature to enable/disable:\n"
-        "✅ - feature enabled\n"
-        "❌ - feature disabled"
+        "Select a feature to enable/disable:"
     )
 
     keyboard = get_settings_keyboard(db, chat_id)
