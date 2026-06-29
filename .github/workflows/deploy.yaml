@@ -33,6 +33,7 @@ jobs:
             --exclude '.github' \
             --exclude '.venv' \
             --exclude '.env' \
+            --exclude 'cobalt-keys.json' \
             --exclude '__pycache__' \
             --exclude 'logs' \
             --exclude 'src/logs' \

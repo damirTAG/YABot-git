@@ -175,7 +175,7 @@ async def ask_handler(m: types.Message, command: CommandObject):
             reply_markup=FAILED_BUTTON,
             parse_mode="Markdown",
         )
-    
+
 
 @router.message(Command("saved"))
 @log("SAVED")

@@ -33,7 +33,7 @@ user_queries: dict = {}
 download_queries: dict[str, str] = {}
 
 DOWNLOADING_IMG_PATH = os.path.join(BASE_DIR.parent, "assets", "download_placeholder.png")
-_downloading_photo_id: str | None = None
+_downloading_doc_id: str | None = None
 
 
 def _is_downloadable_link(text: str) -> bool:
@@ -43,20 +43,21 @@ def _is_downloadable_link(text: str) -> bool:
 
 
 async def _get_placeholder_id(bot: Bot) -> str | None:
-    """Lazily upload the 'downloading...' placeholder once and cache its file_id.
+    """Lazily upload the placeholder once (as a document) and cache its file_id.
 
-    A cached photo file_id lets us answer inline without external hosting, and a
-    photo (not text) result is required so it can later be edited into a video.
+    A *document* result renders as a clean text row in the inline dropdown (title
+    + description, no gallery image), which makes the action obvious. It's still
+    media, so the chosen handler can edit it into a video via editMessageMedia.
     """
-    global _downloading_photo_id
-    if _downloading_photo_id:
-        return _downloading_photo_id
+    global _downloading_doc_id
+    if _downloading_doc_id:
+        return _downloading_doc_id
     try:
-        msg = await bot.send_photo(CACHE_CHAT, types.FSInputFile(DOWNLOADING_IMG_PATH))
-        _downloading_photo_id = msg.photo[-1].file_id
-        return _downloading_photo_id
+        msg = await bot.send_document(CACHE_CHAT, types.FSInputFile(DOWNLOADING_IMG_PATH))
+        _downloading_doc_id = msg.document.file_id
+        return _downloading_doc_id
     except Exception as e:
-        logger.error(f"[inline:download] Failed to upload placeholder image: {e}")
+        logger.error(f"[inline:download] Failed to upload placeholder document: {e}")
         return None
 
 
@@ -161,12 +162,14 @@ async def inline_download_query(inline_query: types.InlineQuery, bot: Bot):
         return await bot.answer_inline_query(inline_query.id, results=[], cache_time=0)
 
     download_queries[result_id] = link
-    item = types.InlineQueryResultCachedPhoto(
+    # Document result -> renders as a text row in the dropdown (no gallery image),
+    # but is still media so it can be edited into a video once downloaded.
+    item = types.InlineQueryResultCachedDocument(
         id=result_id,
-        photo_file_id=placeholder_id,
-        title="Download video",
-        description="Click to download the video (may take a few seconds)",
-        caption="⏳ <i>Crawling...</i>",
+        document_file_id=placeholder_id,
+        title="📥 Download video",
+        description="Tap to fetch the video — takes a few seconds",
+        caption="⏳ <i>Downloading...</i>",
         reply_markup=DOWNLOADING_BUTTON,  # required so we receive inline_message_id
     )
     await bot.answer_inline_query(inline_query.id, results=[item], cache_time=0, is_personal=True)
@@ -198,15 +201,15 @@ async def inline_download_chosen(chosen: types.ChosenInlineResult, bot: Bot):
 
         # Inline messages can't take an uploaded file — upload once to the cache
         # chat to obtain a reusable file_id, then edit the placeholder into it.
-        sent = await bot.send_video(
-            CACHE_CHAT, types.FSInputFile(path), supports_streaming=True
-        )
+        sent = await bot.send_video(CACHE_CHAT, types.FSInputFile(path), supports_streaming=True)
         file_id = sent.video.file_id
         db.save_inline_file(link, file_id)
 
         await bot.edit_message_media(
             inline_message_id=inline_message_id,
-            media=types.InputMediaVideo(media=file_id, caption="📹 <i>downloaded @yerzhanakh_bot</i>"),
+            media=types.InputMediaVideo(
+                media=file_id, caption="📹 <i>downloaded @yerzhanakh_bot</i>"
+            ),
         )
         logger.info(f"[inline:download] Sent video for {link}")
 

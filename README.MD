@@ -1,5 +1,7 @@
 # Yerzhan
 
+[![CI](https://github.com/damirtag/YABot-git/actions/workflows/ci.yaml/badge.svg)](https://github.com/damirtag/YABot-git/actions/workflows/ci.yaml)
+
 ## Telegram Media Bot
 
 #### Link - https://t.me/yerzhanakh_bot
@@ -11,7 +13,7 @@
 - **Python 3.13**, dependencies managed with [uv](https://docs.astral.sh/uv/) (`pyproject.toml` + `uv.lock`).
 - **Lint/format:** Ruff. **Type check:** ty (advisory).
 - **Runtime:** runs natively under a systemd unit, talking to a native Postgres on the same host.
-- **CI/CD:** GitHub Actions — lint/type on PRs; pushes to `prod` deploy to the VPS over SSH (git pull + `uv sync` + service restart).
+- **CI/CD:** GitHub Actions — lint/type + unit tests (pytest) on PRs; pushes to `prod` deploy to the VPS over SSH (git pull + `uv sync` + service restart).
 
 ## Local development
 

@@ -224,9 +224,7 @@ class DB_actions:
         try:
             with closing(self._get_connection()) as conn:
                 with closing(conn.cursor()) as cursor:
-                    cursor.execute(
-                        "SELECT file_id FROM inline_file_cache WHERE link = %s", (link,)
-                    )
+                    cursor.execute("SELECT file_id FROM inline_file_cache WHERE link = %s", (link,))
                     result = cursor.fetchone()
                     return result[0] if result else None
         except psycopg2.Error as e:

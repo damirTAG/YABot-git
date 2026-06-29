@@ -9,14 +9,13 @@ IGNORE_CHAT_IDS = [-1001559555304, -1001919227306, -1001987624296, -100205026627
 SAVED = "🔥 This {} saved. Call @yerzhanakh_bot in inline to send it in any chat"
 BASE_ERROR = "<i>Sorry, failed to proceed this request</i>"
 UPDATE_NOTIFY = (
-    "⚡ <b>Update: /joke Command (only for group chats)</b>\n\n"
-    "Rate the chat's jokes! Reply to any message with <code>/joke</code> and the bot "
-    "starts a poll where everyone rates it from <b>0 to 10</b>.\n\n"
-    "🏆 Every <b>Sunday 23:40 (UTC+5)</b> the bot posts a weekly leaderboard — best joker, "
-    "most bullshit, most active, and the funniest joke of the week.\n"
-    "📊 Check anyone's stats with <code>/jokestats</code> (reply to see someone else's).\n\n"
-    "<i>Admins can turn this off anytime via</i> <code>/settings</code>.\n\n"
-    "I also fixed AI responses (/ask and inline), but it may be not stable yet."
+    "⚡ <b>Update: i finally fixed instagram downloader (reels and post)</b>\n"
+    "and i also added inline support for inst and tiktok, so "
+    "you can paste a link like this:\n"
+    "<code>@yerzhanakh_bot your link here</code>\n\n"
+    "<b>example:</b>\n"
+    "<code>@yerzhanakh_bot https://www.instagram.com/reel/DZMvmT9s1w5/</code>\n\n"
+    "enjoy downloading your brainrot content using my supa pupa bot"
 )
 HELP = """<b>Supporting services:</b>
 <i>🔴 YouTube Video/Shorts

@@ -50,7 +50,7 @@ async def _download_tiktok_video(link: str, download_dir: str) -> str | None:
         vid_id = tt.result.get("id", "tiktok")
         out_path = os.path.join(download_dir, f"{vid_id}.mp4")
         result = await tt.download(link, video_filename=out_path)
-        return result.media if result else None # type: ignore
+        return result.media if result else None  # type: ignore
 
 
 async def _download_reel(link: str, download_dir: str) -> str | None:
