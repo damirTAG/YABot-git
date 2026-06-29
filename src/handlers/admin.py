@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from config.constants import ADMIN_KEYBOARD, DAMIR_USER_ID, UPDATE_NOTIFY
+from config.constants import ADMIN_KEYBOARD, DAMIR_USER_ID
 from database.repo import DB_actions
 from utils.broadcast import BroadcastManager
 from utils.helpers import generate_stats_text, show_users_page
@@ -395,17 +395,22 @@ BASE_DELAY = 0.05
 BATCH_SIZE = 50
 
 
-async def send_with_retry(
+async def copy_with_retry(
     bot: Bot,
-    user_id: int,
-    message: str,
+    target_id: int,
+    from_chat_id: int,
+    message_id: int,
     keyboard: InlineKeyboardMarkup | None = None,
     retries: int = MAX_RETRIES,
 ) -> dict:
-    """Send message with retry logic and error categorization"""
+    """Copy a composed message to a recipient with retry + error categorization.
+
+    Uses ``copy_message`` so the broadcast keeps the exact formatting/media the
+    admin wrote in Telegram (entities are preserved, no parse_mode needed).
+    """
     for attempt in range(retries):
         try:
-            await bot.send_message(user_id, message, reply_markup=keyboard)
+            await bot.copy_message(target_id, from_chat_id, message_id, reply_markup=keyboard)
             return {"status": "sent", "error": None}
         except Exception as e:
             error_msg = str(e).lower()
@@ -429,42 +434,60 @@ async def send_with_retry(
     return {"status": "failed", "error": "Max retries exceeded"}
 
 
+def _vote_keyboard(broadcast_id: str | None) -> InlineKeyboardMarkup:
+    """👍/👎 voting keyboard. ``broadcast_id=None`` for previews (no campaign yet)."""
+    suffix = f":{broadcast_id}" if broadcast_id else ""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👍", callback_data=f"vote_up{suffix}"),
+                InlineKeyboardButton(text="👎", callback_data=f"vote_down{suffix}"),
+            ]
+        ]
+    )
+
+
 @router.message(Command("sendall"))
 async def send_broadcast(m: types.Message, command: CommandObject, bot: Bot):
     """
-    Send broadcast to all users/chats
-    Usage:
-        /sendall - Send with voting buttons
-        /sendall rmvote - Send without voting buttons
-        /sendall chat - Send to chats only
-        /sendall preview - Preview message without sending
+    Broadcast a message you compose in Telegram (full formatting/media kept).
+
+    Reply to the message you want to send with /sendall:
+        /sendall          - broadcast to users, with voting buttons
+        /sendall rmvote   - without voting buttons
+        /sendall chat     - broadcast to chats instead of users
+        /sendall preview  - send the message back to you only (no broadcast)
     """
-    if m.from_user.id != 1038468423:
+    if m.from_user.id != DAMIR_USER_ID:
         return
+
+    if not m.reply_to_message:
+        return await m.reply(
+            "✍️ <b>How to broadcast</b>\n\n"
+            "1. Send (or forward) the message you want to broadcast — with any "
+            "formatting, links, or media.\n"
+            "2. <b>Reply</b> to it with <code>/sendall</code>.\n\n"
+            "Flags: <code>rmvote</code> (no buttons), <code>chat</code> (to chats), "
+            "<code>preview</code> (test on yourself)."
+        )
 
     args = command.args
     is_chat = args and "chat" in args.lower()
     is_no_vote = args and "rmvote" in args.lower()
     is_preview = args and "preview" in args.lower()
 
-    # Get message (you should replace UPDATE_NOTIFY with actual message)
-    message_text = UPDATE_NOTIFY
+    # The message to broadcast is whatever the admin replied to.
+    from_chat_id = m.chat.id
+    source_message_id = m.reply_to_message.message_id
 
-    # Preview mode
+    # Preview mode — copy the message back to the admin, nothing is broadcast.
     if is_preview:
-        keyboard = (
-            None
-            if is_no_vote
-            else InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="👍", callback_data="vote_up"),
-                        InlineKeyboardButton(text="👎", callback_data="vote_down"),
-                    ]
-                ]
-            )
+        await bot.copy_message(
+            m.chat.id,
+            from_chat_id,
+            source_message_id,
+            reply_markup=None if is_no_vote else _vote_keyboard(None),
         )
-        await m.reply(f"Preview:\n\n{message_text}", reply_markup=keyboard)
         return
 
     # Get recipients
@@ -481,22 +504,11 @@ async def send_broadcast(m: types.Message, command: CommandObject, bot: Bot):
         await m.reply("No recipients found!")
         return
 
-    # Create broadcast campaign
-    broadcast_id = broadcast_manager.create_broadcast(message_text, not is_no_vote)
+    # Create broadcast campaign — store a text snippet for history/results.
+    snippet = m.reply_to_message.text or m.reply_to_message.caption or "[media message]"
+    broadcast_id = broadcast_manager.create_broadcast(snippet, not is_no_vote)
 
-    # Prepare keyboard
-    keyboard = (
-        None
-        if is_no_vote
-        else InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="👍", callback_data=f"vote_up:{broadcast_id}"),
-                    InlineKeyboardButton(text="👎", callback_data=f"vote_down:{broadcast_id}"),
-                ]
-            ]
-        )
-    )
+    keyboard = None if is_no_vote else _vote_keyboard(broadcast_id)
 
     # Progress message
     progress_msg = await m.reply(
@@ -520,7 +532,7 @@ async def send_broadcast(m: types.Message, command: CommandObject, bot: Bot):
     failed_ids = []
 
     for i, recipient_id in enumerate(recipients, 1):
-        result = await send_with_retry(bot, recipient_id, message_text, keyboard)
+        result = await copy_with_retry(bot, recipient_id, from_chat_id, source_message_id, keyboard)
 
         # Update stats
         if result["status"] == "sent":
@@ -648,27 +660,32 @@ async def vote_handler(callback_query: types.CallbackQuery):
 
     await callback_query.answer(f"Vote recorded: {vote}")
 
+    msg = callback_query.message
+    is_media = msg.text is None  # photo/video broadcasts carry a caption, not text
+
     # Update message
     if is_private:
-        await callback_query.message.edit_text(f"Thank you for your feedback!\n\nYour vote: {vote}")
+        # For media messages we can't edit text — just drop the buttons.
+        try:
+            if is_media:
+                await msg.edit_reply_markup(reply_markup=None)
+            else:
+                await msg.edit_text(f"Thank you for your feedback!\n\nYour vote: {vote}")
+        except Exception:
+            pass
     else:
         # Show live results in groups
         vote_stats = broadcast_manager.get_vote_stats(broadcast_id)
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="👍", callback_data=f"vote_up:{broadcast_id}"),
-                    InlineKeyboardButton(text="👎", callback_data=f"vote_down:{broadcast_id}"),
-                ]
-            ]
-        )
-
-        original_text = callback_query.message.text.split("\n\n")[0]
-        await callback_query.message.edit_text(
-            f"{original_text}\n\n👍 Yes: {vote_stats['yes']}\n👎 No: {vote_stats['no']}",
-            reply_markup=keyboard,
-        )
+        keyboard = _vote_keyboard(broadcast_id)
+        base = (msg.text or msg.caption or "").split("\n\n")[0]
+        results = f"{base}\n\n👍 Yes: {vote_stats['yes']}\n👎 No: {vote_stats['no']}"
+        try:
+            if is_media:
+                await msg.edit_caption(caption=results, reply_markup=keyboard)
+            else:
+                await msg.edit_text(results, reply_markup=keyboard)
+        except Exception:
+            pass
 
 
 @router.message(Command("failures"))
