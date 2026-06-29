@@ -36,6 +36,11 @@ YANDEX_MUSIC_TOKEN = get_env("YANDEX_MUSIC_TOKEN")
 INST_USERNAME = get_env("INST_USERNAME")
 INST_PASS = get_env("INST_PASS")
 
+# Cobalt (self-hosted media downloader) — used for Instagram reels
+# URL must include scheme and trailing slash, e.g. http://localhost:9000/
+COBALT_API_URL = get_env("COBALT_API_URL", "http://localhost:9000/")
+COBALT_API_KEY = get_env("COBALT_API_KEY")  # only needed if your instance is key-protected
+
 # Email configuration
 CR_MAIL = get_env("CR_MAIL")
 CR_PASS = get_env("CR_PASS")

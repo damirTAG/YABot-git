@@ -1,3 +1,5 @@
+import os
+import shutil
 import time
 import uuid
 
@@ -5,8 +7,17 @@ from aiogram import Bot, Router, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import logger
-from config.constants import FAILED_BUTTON, GENERATING_BUTTON, MAX_GPT_QUERY_LENGTH
+from config.constants import (
+    CACHE_CHAT,
+    DOWNLOADING_BUTTON,
+    FAILED_BUTTON,
+    GENERATING_BUTTON,
+    MAX_GPT_QUERY_LENGTH,
+)
+from config.enums import Patterns
+from config.settings import BASE_DIR
 from database.repo import DB_actions
+from services.downloader import download_single_video
 from services.openai import generate_response
 from utils.decorators import log
 
@@ -15,6 +26,38 @@ db = DB_actions()
 
 
 user_queries: dict = {}
+
+# Inline download state:
+#   download_queries: result_id -> raw link, set on inline_query, consumed on choose.
+#   Ready video file_ids are cached in the DB (db.get_inline_file / save_inline_file).
+download_queries: dict[str, str] = {}
+
+DOWNLOADING_IMG_PATH = os.path.join(BASE_DIR.parent, "assets", "download_placeholder.png")
+_downloading_photo_id: str | None = None
+
+
+def _is_downloadable_link(text: str) -> bool:
+    """True if the inline query is a single-object TikTok video or Instagram reel."""
+    text = (text or "").strip()
+    return bool(Patterns.TIKTOK.value.match(text) or Patterns.INST_REELS.value.match(text))
+
+
+async def _get_placeholder_id(bot: Bot) -> str | None:
+    """Lazily upload the 'downloading...' placeholder once and cache its file_id.
+
+    A cached photo file_id lets us answer inline without external hosting, and a
+    photo (not text) result is required so it can later be edited into a video.
+    """
+    global _downloading_photo_id
+    if _downloading_photo_id:
+        return _downloading_photo_id
+    try:
+        msg = await bot.send_photo(CACHE_CHAT, types.FSInputFile(DOWNLOADING_IMG_PATH))
+        _downloading_photo_id = msg.photo[-1].file_id
+        return _downloading_photo_id
+    except Exception as e:
+        logger.error(f"[inline:download] Failed to upload placeholder image: {e}")
+        return None
 
 
 @router.inline_query(lambda query: query.query.lower().startswith("ask "))
@@ -87,6 +130,99 @@ async def chatgpt_chosen_inline_handler(chosen_inline_query: types.ChosenInlineR
 
     except Exception as e:
         logger.error(f"Error in chosen inline handler: {e}")
+
+
+@router.inline_query(lambda q: _is_downloadable_link(q.query))
+async def inline_download_query(inline_query: types.InlineQuery, bot: Bot):
+    """Offer a single placeholder result for a raw TikTok/Instagram-reel link.
+
+    If we already downloaded this link in this process, answer instantly with the
+    cached video; otherwise show the 'downloading...' photo and let the chosen
+    handler swap in the real video.
+    """
+    link = inline_query.query.strip()
+    result_id = uuid.uuid4().hex[:8]
+
+    cached_file_id = db.get_inline_file(link)
+    if cached_file_id:
+        item = types.InlineQueryResultCachedVideo(
+            id=result_id,
+            video_file_id=cached_file_id,
+            title="Send video",
+            caption="📹 <i>downloaded @yerzhanakh_bot</i>",
+        )
+        return await bot.answer_inline_query(
+            inline_query.id, results=[item], cache_time=0, is_personal=True
+        )
+
+    placeholder_id = await _get_placeholder_id(bot)
+    if not placeholder_id:
+        # No placeholder available — nothing to offer, but don't error out.
+        return await bot.answer_inline_query(inline_query.id, results=[], cache_time=0)
+
+    download_queries[result_id] = link
+    item = types.InlineQueryResultCachedPhoto(
+        id=result_id,
+        photo_file_id=placeholder_id,
+        title="Download video",
+        description="Click to download the video (may take a few seconds)",
+        caption="⏳ <i>Crawling...</i>",
+        reply_markup=DOWNLOADING_BUTTON,  # required so we receive inline_message_id
+    )
+    await bot.answer_inline_query(inline_query.id, results=[item], cache_time=0, is_personal=True)
+
+
+@router.chosen_inline_result(lambda c: _is_downloadable_link(c.query))
+@log("INLINE_DOWNLOAD")
+async def inline_download_chosen(chosen: types.ChosenInlineResult, bot: Bot):
+    """Download the link, upload it to get a file_id, and edit the placeholder."""
+    inline_message_id = chosen.inline_message_id
+    link = download_queries.pop(chosen.result_id, None)
+
+    # Cache hit path already sent a real video; nothing to do.
+    if not link or not inline_message_id:
+        return
+
+    download_dir = os.path.join("./temp_downloads", f"inline_{chosen.result_id}")
+    try:
+        path = await download_single_video(link, download_dir)
+        if not path:
+            return await bot.edit_message_caption(
+                inline_message_id=inline_message_id,
+                caption=(
+                    "❌ Couldn't download this — it may have multiple items or be unsupported. "
+                    "Open @yerzhanakh_bot directly."
+                ),
+                reply_markup=FAILED_BUTTON,
+            )
+
+        # Inline messages can't take an uploaded file — upload once to the cache
+        # chat to obtain a reusable file_id, then edit the placeholder into it.
+        sent = await bot.send_video(
+            CACHE_CHAT, types.FSInputFile(path), supports_streaming=True
+        )
+        file_id = sent.video.file_id
+        db.save_inline_file(link, file_id)
+
+        await bot.edit_message_media(
+            inline_message_id=inline_message_id,
+            media=types.InputMediaVideo(media=file_id, caption="📹 <i>downloaded @yerzhanakh_bot</i>"),
+        )
+        logger.info(f"[inline:download] Sent video for {link}")
+
+    except Exception as e:
+        logger.exception(f"[inline:download] Failed for {link}: {e}")
+        try:
+            await bot.edit_message_caption(
+                inline_message_id=inline_message_id,
+                caption="❌ Something went wrong while downloading.",
+                reply_markup=FAILED_BUTTON,
+            )
+        except Exception:
+            pass
+    finally:
+        if os.path.exists(download_dir):
+            shutil.rmtree(download_dir, ignore_errors=True)
 
 
 # Fix for general inline handler

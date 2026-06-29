@@ -4,10 +4,22 @@ import os
 from urllib.parse import unquote, urlparse
 
 import aiohttp
-import yt_dlp
+
+from config.settings import COBALT_API_KEY, COBALT_API_URL
 
 logger = logging.getLogger()
 semaphore = asyncio.Semaphore(20)
+
+# Headers for talking to the self-hosted cobalt instance.
+_COBALT_HEADERS = {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+}
+if COBALT_API_KEY:
+    _COBALT_HEADERS["Authorization"] = f"Api-Key {COBALT_API_KEY}"
+
+# Total time budget for resolving + streaming a single reel.
+_COBALT_TIMEOUT = aiohttp.ClientTimeout(total=180)
 
 
 async def download_inst_post(session: aiohttp.ClientSession, url, download_dir):
@@ -54,42 +66,168 @@ async def download_inst_post(session: aiohttp.ClientSession, url, download_dir):
             return True
 
 
+async def _cobalt_request(session: aiohttp.ClientSession, url: str) -> dict:
+    """Low-level POST to the cobalt instance. Returns the raw JSON response."""
+    payload = {
+        "url": url,
+        "videoQuality": "720",
+        "downloadMode": "auto",
+        "filenameStyle": "basic",
+    }
+
+    async with session.post(COBALT_API_URL, headers=_COBALT_HEADERS, json=payload) as resp:
+        # cobalt always answers with JSON, even on errors.
+        data = await resp.json(content_type=None)
+
+    logger.info(f"[cobalt] | {url} -> status={data.get('status')}")
+    return data
+
+
+async def _resolve_cobalt_media(session: aiohttp.ClientSession, url: str) -> str | None:
+    """Resolve a single direct media URL (used for reels).
+
+    Returns the direct (tunnel/redirect) URL on success, or ``None`` if cobalt
+    couldn't process the link. For picker responses the first video is chosen.
+    """
+    data = await _cobalt_request(session, url)
+    status = data.get("status")
+
+    if status in ("tunnel", "redirect"):
+        return data.get("url")
+
+    if status == "picker":
+        items = data.get("picker") or []
+        chosen = next((i for i in items if i.get("type") == "video"), None)
+        chosen = chosen or (items[0] if items else None)
+        return chosen.get("url") if chosen else None
+
+    if status == "error":
+        logger.warning(f"[cobalt] | Error resolving {url}: {data.get('error')}")
+        return None
+
+    logger.warning(f"[cobalt] | Unexpected response for {url}: {data}")
+    return None
+
+
+async def _resolve_cobalt_post(session: aiohttp.ClientSession, url: str) -> list[dict]:
+    """Resolve every item of a post/carousel.
+
+    Returns an ordered list of items shaped like ``{"type": ..., "url": ...}``.
+    Single-media posts come back as a one-element list. Empty list on failure.
+    """
+    data = await _cobalt_request(session, url)
+    status = data.get("status")
+
+    if status in ("tunnel", "redirect"):
+        return [{"type": None, "url": data.get("url"), "filename": data.get("filename")}]
+
+    if status == "picker":
+        return [i for i in (data.get("picker") or []) if i.get("url")]
+
+    if status == "error":
+        logger.warning(f"[cobalt] | Error resolving {url}: {data.get('error')}")
+    else:
+        logger.warning(f"[cobalt] | Unexpected response for {url}: {data}")
+    return []
+
+
+async def _stream_to_file(session: aiohttp.ClientSession, media_url: str, out_path: str) -> bool:
+    """Stream a media URL to disk in chunks. Returns False on a bad/empty file."""
+    async with session.get(media_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
+        if resp.status != 200:
+            logger.warning(f"[cobalt] | Download failed ({resp.status}) for {media_url}")
+            return False
+
+        with open(out_path, "wb") as f:
+            async for chunk in resp.content.iter_chunked(1 << 16):
+                f.write(chunk)
+
+    # Guard against truncated/empty downloads.
+    if os.path.getsize(out_path) < 500:
+        logger.warning(f"[cobalt] | Downloaded file too small, discarding: {out_path}")
+        os.remove(out_path)
+        return False
+
+    return True
+
+
 async def download_instagram_reel(url: str, download_dir: str, filename: str = None):  # type: ignore
     """
-    Downloads Instagram reels using yt-dlp.
+    Downloads Instagram reels via a self-hosted cobalt instance.
+
+    Saves to ``{download_dir}/{filename or 'reel'}.mp4`` and returns True/False
+    so existing callers keep working unchanged.
 
     :param url: Instagram reel URL
     :param download_dir: Directory to save the downloaded file
     :param filename: Optional custom filename (without extension)
     """
     os.makedirs(download_dir, exist_ok=True)
-
-    ydl_opts = {
-        "format": "best",
-        "outtmpl": os.path.join(download_dir, f"{filename or '%(id)s'}.%(ext)s"),
-        "quiet": False,
-        "no_warnings": False,
-        "extract_flat": False,
-        "cookiefile": None,  # Add cookie file path if needed for authenticated content
-    }
+    out_path = os.path.join(download_dir, f"{filename or 'reel'}.mp4")
 
     try:
-        # Run yt-dlp in a thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _download_with_ytdlp, url, ydl_opts)
+        async with semaphore:
+            async with aiohttp.ClientSession(timeout=_COBALT_TIMEOUT) as session:
+                media_url = await _resolve_cobalt_media(session, url)
+                if not media_url:
+                    return False
+
+                if not await _stream_to_file(session, media_url, out_path):
+                    return False
+
         logger.info(f"[Instagram:reel] | Successfully downloaded: {url}")
         return True
     except Exception as e:
         logger.exception(f"[Instagram:reel] | Error downloading {url}: {e}")
+        if os.path.exists(out_path):
+            os.remove(out_path)
         return False
 
 
-def _download_with_ytdlp(url: str, ydl_opts: dict):
+def _ext_for_item(item: dict) -> str:
+    """Pick a file extension for a cobalt media item.
+
+    Videos/gifs -> .mp4 (handler treats only .mp4 as video); anything else is
+    sent as a photo, so we keep the real image extension when known.
     """
-    Helper function to download with yt-dlp (runs in executor).
+    media_type = (item.get("type") or "").lower()
+    if media_type in ("video", "gif"):
+        return ".mp4"
+    if media_type == "photo":
+        return ".jpg"
+
+    # Single-media posts: derive from cobalt's suggested filename.
+    ext = os.path.splitext(item.get("filename") or "")[1].lower()
+    if ext in (".mp4", ".mov", ".webm"):
+        return ".mp4"
+    return ext or ".jpg"
+
+
+async def download_instagram_post(url: str, download_dir: str) -> list[str]:
     """
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore
-        ydl.download([url])
+    Downloads an Instagram post (single media or carousel) via cobalt.
+
+    Returns an ordered list of saved file paths (images and/or videos). An empty
+    list means nothing could be downloaded. Files are named ``00``, ``01``, ...
+    so directory order matches the post order.
+    """
+    os.makedirs(download_dir, exist_ok=True)
+    saved: list[str] = []
+
+    try:
+        async with semaphore:
+            async with aiohttp.ClientSession(timeout=_COBALT_TIMEOUT) as session:
+                items = await _resolve_cobalt_post(session, url)
+                for idx, item in enumerate(items):
+                    out_path = os.path.join(download_dir, f"{idx:02d}{_ext_for_item(item)}")
+                    if await _stream_to_file(session, item["url"], out_path):
+                        saved.append(out_path)
+
+        logger.info(f"[Instagram:post] | Downloaded {len(saved)} item(s) from {url}")
+    except Exception as e:
+        logger.exception(f"[Instagram:post] | Error downloading {url}: {e}")
+
+    return saved
 
 
 async def download_instagram_content(url: str, download_dir: str, filename: str = None):  # type: ignore

@@ -133,6 +133,10 @@ GENERATING_BUTTON = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="⏳ Generating...", callback_data="waiting")]]
 )
 
+DOWNLOADING_BUTTON = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="⏳ Stand by...", callback_data="waiting")]]
+)
+
 FAILED_BUTTON = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="❌ Failed", callback_data="failed")]]
 )

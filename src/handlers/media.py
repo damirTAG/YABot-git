@@ -6,7 +6,6 @@ import shutil
 import traceback
 from datetime import datetime
 
-import aiohttp
 import pytz
 import yt_dlp as ytd
 from aiogram import Bot, Router, exceptions, types
@@ -21,7 +20,7 @@ from config.constants import BASE_ERROR, CACHE_CHAT, CLOSE_BUTTON, IGNORE_CHAT_I
 from config.enums import Patterns
 from database.cache import cache
 from database.repo import DB_actions
-from services.inst import download_inst_post, download_instagram_reel
+from services.inst import download_instagram_post, download_instagram_reel
 from services.soundcloud import SoundCloudTool
 from services.tiktok import TikTok
 from services.yandexmusic import TrackData, YandexMusicSDK
@@ -304,65 +303,61 @@ async def inst_photos_handler(message: types.Message, bot: Bot):
         pass
 
     await bot.send_chat_action(message.chat.id, "upload_photo")
-    post_url = message.text
-    shortcode = post_url.split("/")[-2]
 
-    urls_to_check: list = [f"https://ddinstagram.com/images/{shortcode}/{i}" for i in range(1, 21)]
+    match = re.search(Patterns.INST_POSTS.value, message.text)
+    post_url = match.group(0) if match else message.text.strip()
+    shortcode = post_url.rstrip("/").split("/")[-1].split("?")[0]
 
-    file_path = f"{shortcode}"
-    os.makedirs(file_path, exist_ok=True)
+    download_dir = os.path.join("./temp_downloads", shortcode)
 
-    async with aiohttp.ClientSession() as session:
-        valid_images = []
-        for url in urls_to_check:
-            success = await download_inst_post(session, url, file_path)
-            if success:
-                valid_images.append(url)
-                logger.info("success")
-            else:
-                logger.info("no success")
-                break  # Stop checking after first 404
+    try:
+        files = await download_instagram_post(post_url, download_dir)
 
-    if not valid_images:
-        await message.reply("❌ Failed to get content from this post.", reply_markup=CLOSE_BUTTON)
-        shutil.rmtree(file_path)
-        return
-
-    caption = f'🖼 <i><a href="https://instagram.com/p/{shortcode}">link</a></i>\n\n<i>via @yerzhanakh_bot</i>'
-
-    media_list = []
-    for filename in sorted(os.listdir(file_path)):
-        file_full_path = os.path.join(file_path, filename)
-        if filename.endswith(".mp4"):
-            media_list.append(
-                InputMediaVideo(
-                    media=types.FSInputFile(file_full_path),
-                    caption=caption if not media_list else None,
-                )
+        if not files:
+            await message.reply(
+                "❌ Failed to get content from this post.", reply_markup=CLOSE_BUTTON
             )
-        elif filename.endswith(".jpg"):
-            media_list.append(
-                InputMediaPhoto(
-                    media=types.FSInputFile(file_full_path),
-                    caption=caption if not media_list else None,
-                )
-            )
+            return
 
-    chunks = [media_list[i : i + 10] for i in range(0, len(media_list), 10)]
+        caption = f'🖼 <i><a href="https://instagram.com/p/{shortcode}">link</a></i>\n\n<i>via @yerzhanakh_bot</i>'
 
-    if chunks:
-        for idx, chunk in enumerate(chunks):
-            if idx > 0:
-                for item in chunk:
-                    item.caption = ""
+        # Telegram caps a media group at 10 items, so split into albums of 10.
+        # InputMedia objects are frozen (immutable), so the caption is applied at
+        # construction time — only on the very first item of the first album
+        file_chunks = [files[i : i + 10] for i in range(0, len(files), 10)]
+        for chunk_idx, chunk in enumerate(file_chunks):
+            media_group = []
+            for file_idx, file_full_path in enumerate(chunk):
+                item_caption = caption if (chunk_idx == 0 and file_idx == 0) else None
+                if file_full_path.endswith(".mp4"):
+                    media_group.append(
+                        InputMediaVideo(
+                            media=types.FSInputFile(file_full_path), caption=item_caption
+                        )
+                    )
+                else:
+                    media_group.append(
+                        InputMediaPhoto(
+                            media=types.FSInputFile(file_full_path), caption=item_caption
+                        )
+                    )
             await bot.send_media_group(
-                event_chat.id, media=chunk, reply_to_message_id=message.message_id
+                event_chat.id, media=media_group, reply_to_message_id=message.message_id
             )
-    else:
-        await message.reply("❌ Failed to retrieve any images.", reply_markup=CLOSE_BUTTON)
 
-    shutil.rmtree(file_path)
-    logger.info(f"[Instagram:post] | {shortcode} folder removed successfully")
+        logger.info(f"[Instagram:post] | Sent {len(files)} item(s) [{shortcode}]")
+    except Exception as e:
+        if os.path.exists(shortcode):
+            shutil.rmtree(shortcode, ignore_errors=True)
+        logger.exception(f"[Instagram:post] | Error processing {shortcode}: {e}")
+        await message.reply(
+            "❌ An error occurred while processing the post.", reply_markup=CLOSE_BUTTON
+        )
+    finally:
+        if os.path.exists(download_dir):
+            shutil.rmtree(shortcode, ignore_errors=True)
+            shutil.rmtree(download_dir, ignore_errors=True)
+            logger.info(f"[Instagram:post] | Cleaned up {download_dir}")
 
 
 @router.message(RegexFilter(Patterns.TWITCH_VK.value))

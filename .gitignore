@@ -6,8 +6,10 @@ audio
 games/
 fastapi/
 .env
+.env.*
 yt_video/
 .venv
 .vscode
 .ruff_cache
 .claude
+cobalt-keys.json

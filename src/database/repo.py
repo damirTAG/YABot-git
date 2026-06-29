@@ -153,6 +153,15 @@ class DB_actions:
                     )
                 """)
 
+                # Inline download cache: raw link -> ready Telegram video file_id.
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS inline_file_cache (
+                        link TEXT PRIMARY KEY,
+                        file_id VARCHAR(255) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
                 conn.commit()
                 self.logger.info("Database initialized successfully")
 
@@ -189,6 +198,39 @@ class DB_actions:
                     return None
         except psycopg2.Error as e:
             self.logger.error(f"Error getting cached media: {e}")
+            return None
+
+    def save_inline_file(self, link: str, file_id: str) -> bool:
+        """Cache a ready video file_id for an inline-download link."""
+        try:
+            with closing(self._get_connection()) as conn:
+                with closing(conn.cursor()) as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO inline_file_cache (link, file_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT (link) DO UPDATE SET file_id = %s
+                        """,
+                        (link, file_id, file_id),
+                    )
+                    conn.commit()
+                    return True
+        except psycopg2.Error as e:
+            self.logger.error(f"Error saving inline file cache: {e}")
+            return False
+
+    def get_inline_file(self, link: str) -> str | None:
+        """Return a cached video file_id for an inline-download link, if any."""
+        try:
+            with closing(self._get_connection()) as conn:
+                with closing(conn.cursor()) as cursor:
+                    cursor.execute(
+                        "SELECT file_id FROM inline_file_cache WHERE link = %s", (link,)
+                    )
+                    result = cursor.fetchone()
+                    return result[0] if result else None
+        except psycopg2.Error as e:
+            self.logger.error(f"Error getting inline file cache: {e}")
             return None
 
     def toggle_setting(self, chat_id: int, setting: str) -> bool:

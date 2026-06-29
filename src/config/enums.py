@@ -10,7 +10,7 @@ class Patterns(Enum):
     YANDEX_MUSIC = re.compile(r"https://music\.yandex\.(?:ru|com|kz)/album/\d+/track/\d+")
     TWITCH_VK = re.compile(r"(?:https?://)?(?:www\.)?(?:vk\.com/clip|twitch\.tv/)")
     INST_POSTS = re.compile(r"(https?://)?(www\.)?instagram\.com/p/.*")
-    INST_REELS = re.compile(r"(https?://)?(www\.)?instagram\.com/(reel|share|tv)/.*")
+    INST_REELS = re.compile(r"(https?://)?(www\.)?instagram\.com/(reel|reels|share|tv)/.*")
     YOUTUBE = re.compile(
         r"(?:https?:\/\/)?(?:www\.)?"
         r"(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)"
