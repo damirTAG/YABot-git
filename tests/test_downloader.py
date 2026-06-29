@@ -46,3 +46,38 @@ async def test_unsupported_link_returns_none(patch_helpers, tmp_path):
     out = await downloader.download_single_video("https://example.com/whatever", str(tmp_path))
     assert out is None
     assert patch_helpers == {}
+
+
+@pytest.fixture
+def patch_resolvers(monkeypatch):
+    calls = {}
+
+    async def fake_tiktok(link):
+        calls["tiktok"] = link
+        return [{"type": "video", "url": "tt", "thumb": "ttc"}]
+
+    async def fake_instagram(link):
+        calls["instagram"] = link
+        return [{"type": "video", "url": "ig", "thumb": "ig"}]
+
+    monkeypatch.setattr(downloader, "_resolve_tiktok_inline", fake_tiktok)
+    monkeypatch.setattr(downloader, "_resolve_instagram_inline", fake_instagram)
+    return calls
+
+
+async def test_resolve_inline_routes_tiktok(patch_resolvers):
+    out = await downloader.resolve_inline_media("https://www.tiktok.com/@u/video/1")
+    assert out == [{"type": "video", "url": "tt", "thumb": "ttc"}]
+    assert "tiktok" in patch_resolvers
+
+
+async def test_resolve_inline_routes_reel(patch_resolvers):
+    out = await downloader.resolve_inline_media("https://www.instagram.com/reel/ABC123/")
+    assert out == [{"type": "video", "url": "ig", "thumb": "ig"}]
+    assert "instagram" in patch_resolvers
+
+
+async def test_resolve_inline_unsupported_returns_empty(patch_resolvers):
+    out = await downloader.resolve_inline_media("https://example.com/whatever")
+    assert out == []
+    assert patch_resolvers == {}

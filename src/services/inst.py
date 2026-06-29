@@ -230,6 +230,29 @@ async def download_instagram_post(url: str, download_dir: str) -> list[str]:
     return saved
 
 
+async def resolve_instagram_media(url: str) -> list[dict]:
+    """Resolve an Instagram link to direct media descriptors (no download).
+
+    Returns ``[{"type": "video"|"photo", "url": ..., "thumb": ...}]`` using the
+    direct CDN URLs cobalt hands back — suitable for inline results that Telegram
+    fetches itself. Empty list if cobalt couldn't process the link.
+    """
+    async with aiohttp.ClientSession(timeout=_COBALT_TIMEOUT) as session:
+        items = await _resolve_cobalt_post(session, url)
+
+    out: list[dict] = []
+    for item in items:
+        media_type = "video" if _ext_for_item(item) == ".mp4" else "photo"
+        out.append(
+            {
+                "type": media_type,
+                "url": item["url"],
+                "thumb": item.get("thumb") or item["url"],
+            }
+        )
+    return out
+
+
 async def download_instagram_content(url: str, download_dir: str, filename: str = None):  # type: ignore
     """
     Smart downloader that detects content type and uses appropriate method.
