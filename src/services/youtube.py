@@ -96,11 +96,27 @@ class YouTubeSDK:
         return options
 
     def _get_format_string(self) -> str:
-        """Get optimized format string for mid-quality videos."""
+        """Get optimized format string for mid-quality videos.
+
+        Video is constrained to H.264 (``vcodec^=avc1``) and audio to AAC
+        (``acodec^=mp4a``). YouTube now serves AV1/VP9 inside mp4 containers, and
+        ``[ext=mp4]`` alone matches those — Telegram's player can't decode AV1/VP9,
+        so it shows a black screen with sound. Selecting the codec (not just the
+        container) keeps playback working everywhere.
+        """
+
+        def _video(height: int) -> str:
+            return (
+                f"bestvideo[height<={height}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+                f"bestvideo[height<={height}][vcodec^=avc1]+bestaudio/"
+                f"best[height<={height}][vcodec^=avc1]/"
+                f"best[height<={height}][ext=mp4]/best[height<={height}]/best"
+            )
+
         quality_map = {
-            "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best",
-            "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480][ext=mp4]+bestaudio/best[height<=480][ext=mp4]/best[height<=480]/best[ext=mp4]/best",
-            "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360][ext=mp4]+bestaudio/best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
+            "720p": _video(720),
+            "480p": _video(480),
+            "360p": _video(360),
             "audio": "bestaudio[ext=m4a]/bestaudio",
             "mp3": "bestaudio[ext=m4a]/bestaudio",
         }
