@@ -125,7 +125,7 @@ async def inline_download_query(inline_query: types.InlineQuery, bot: Bot):
                     mime_type="video/mp4",
                     thumbnail_url=item["thumb"],
                     title="📥 download video",
-                    caption="📹 <i>downloaded @yerzhanakh_bot</i>",
+                    caption=f"<a href='{link}'>📹 downloaded by</a> @yerzhanakh_bot",
                 )
             )
         else:  # photo
@@ -135,7 +135,7 @@ async def inline_download_query(inline_query: types.InlineQuery, bot: Bot):
                     photo_url=item["url"],
                     thumbnail_url=item["thumb"],
                     title="📥 download photo",
-                    caption="🖼 <i>downloaded @yerzhanakh_bot</i>",
+                    caption=f"<a href='{link}'>🖼 downloaded by</a> @yerzhanakh_bot",
                 )
             )
 
