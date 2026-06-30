@@ -16,18 +16,21 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install just
+        uses: extractions/setup-just@v2
+
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Ruff lint
-        run: uv run ruff check src tests
+      - name: Lint
+        run: just lint
 
-      - name: Ruff format check
-        run: uv run ruff format --check src tests
+      - name: Format check
+        run: just fmt-check
 
       # Type checking is advisory for now — surfaces issues without gating.
       - name: Type check (ty, informational)
-        run: uv run ty check src
+        run: just typecheck
         continue-on-error: true
 
   test:
@@ -40,8 +43,11 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install just
+        uses: extractions/setup-just@v2
+
       - name: Sync dependencies
         run: uv sync --frozen
 
       - name: Run tests
-        run: uv run pytest -q
+        run: just test

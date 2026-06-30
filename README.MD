@@ -13,18 +13,32 @@
 - **Python 3.13**, dependencies managed with [uv](https://docs.astral.sh/uv/) (`pyproject.toml` + `uv.lock`).
 - **Lint/format:** Ruff. **Type check:** ty (advisory).
 - **Runtime:** runs natively under a systemd unit, talking to a native Postgres on the same host.
-- **CI/CD:** GitHub Actions — lint/type + unit tests (pytest) on PRs; pushes to `prod` deploy to the VPS over SSH (git pull + `uv sync` + service restart).
+- **Task runner:** [just](https://github.com/casey/just) — see the [`justfile`](justfile); the same recipes run locally and in CI.
+- **CI/CD:** GitHub Actions — runs `just lint` / `just fmt-check` / `just test` on PRs; pushes to `prod` deploy to the VPS over SSH (rsync + `uv sync` + service restart).
 
 ## Local development
 
 ```bash
 uv sync                       # create .venv from the lockfile (incl. dev tools)
 cp example.env .env           # fill in tokens; DB_HOST=localhost
-uv run ruff check src         # lint
-uv run ruff format src        # format
-uv run ty check src           # type report (advisory)
-PYTHONPATH=src uv run python src/app.py   # run the bot
 ```
+
+Common tasks run through [`just`](https://github.com/casey/just) (`brew install just`).
+The recipes live in the [`justfile`](justfile) and are the single source of truth
+shared with CI:
+
+```bash
+just              # list all recipes
+just run          # start the bot (PYTHONPATH=src uv run python src/app.py)
+just fmt          # auto-fix lint issues + format
+just lint         # ruff lint
+just test         # run the test suite
+just typecheck    # ty report (advisory)
+just check        # lint + format check + tests — the same gates CI runs
+```
+
+Run `just check` before pushing; it mirrors CI exactly, so green locally = green
+on GitHub.
 
 Modules import top-level (`from config import ...`), so `src/` must be on
 `PYTHONPATH` — hence the `PYTHONPATH=src` prefix (the systemd unit sets this).

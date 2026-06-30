@@ -11,5 +11,6 @@ yt_video/
 .venv
 .vscode
 .ruff_cache
+.pytest_cache
 .claude
 cobalt-keys.json
