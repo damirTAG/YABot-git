@@ -175,7 +175,7 @@ class QuoteMaker:
             if lines:
                 lines[0] = f"«{lines[0]}"
                 lines[-1] = f"{lines[-1]}»"
-            lines += ["", f"© {author_name}"]
+            lines += ["", f"— {author_name}"]
             block = "\n".join(lines)
             best_text = block
 
