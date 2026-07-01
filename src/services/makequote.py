@@ -7,11 +7,25 @@ from pathlib import Path
 
 from aiogram import Bot
 from aiogram.types import BufferedInputFile, Message
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 from pilmoji import Pilmoji
 from pilmoji.source import AppleEmojiSource
 
 logger = logging.getLogger()
+
+# Telegram dark-theme peer name colors (red, green, yellow, blue, purple, pink, cyan, orange).
+TELEGRAM_NAME_COLORS: list[tuple[int, int, int]] = [
+    (251, 97, 105),
+    (133, 222, 133),
+    (243, 188, 92),
+    (101, 189, 243),
+    (180, 139, 242),
+    (255, 86, 148),
+    (98, 212, 227),
+    (250, 163, 87),
+]
+# Telegram maps user_id % 7 to a palette index in this order.
+_PEER_COLOR_ORDER = [0, 7, 4, 1, 6, 3, 5]
 
 
 @dataclass
@@ -298,8 +312,474 @@ class QuoteMaker:
         """Create and send the quote image, or report failure to the user."""
         quote_buffer = await self.create_quote(message)
         if quote_buffer is None:
-            await message.answer("❌ Не удалось создать цитату. Ответьте на текстовое сообщение.")
+            await message.answer("❌ Failed to create quote. Use /qq to create quote with image or sticker.")
             return
 
         photo = BufferedInputFile(quote_buffer.read(), filename="quote.png")
         await message.reply_photo(photo=photo)
+
+
+@dataclass
+class TelegramQuoteConfig:
+    """Configuration for the Telegram-UI style quote sticker (base design units)."""
+
+    # Stickers are capped at 512px on the longest side by Telegram.
+    sticker_size: int = 512
+    # Render at a multiple of the base design and downscale for crisp output.
+    supersample: int = 3
+
+    padding: int = 8
+    # Extra transparent space below the bubble so Telegram's floating
+    # timestamp badge doesn't overlap the content.
+    bottom_margin: int = 28
+    avatar_size: int = 60
+    avatar_gap: int = 12
+
+    bubble_radius: int = 22
+    bubble_pad_x: int = 18
+    bubble_pad_top: int = 10
+    bubble_pad_bottom: int = 14
+    tail_width: int = 12
+    tail_height: int = 20
+
+    # Quoted photos inside a bubble and quoted stickers (bare, no bubble).
+    media_max_size: int = 300
+    media_radius: int = 10
+    sticker_quote_size: int = 240
+    caption_gap: int = 8
+    max_caption_lines: int = 8
+
+    name_font_size: int = 25
+    text_font_size: int = 30
+    name_gap: int = 6
+    line_spacing: int = 6
+
+    bubble_color: tuple[int, int, int, int] = (44, 38, 55, 255)
+    bubble_outline: tuple[int, int, int, int] = (255, 255, 255, 22)
+    text_color: tuple[int, int, int, int] = (252, 252, 252, 255)
+
+    max_name_length: int = 25
+    max_quote_length: int = 400
+    max_lines: int = 14
+
+
+class TelegramQuoteMaker(QuoteMaker):
+    """Renders quotes as Telegram-UI style stickers: avatar + chat bubble on transparency."""
+
+    def __init__(self, bot: Bot, tg_config: TelegramQuoteConfig | None = None):
+        super().__init__(bot)
+        self.tg = tg_config or TelegramQuoteConfig()
+        self._weighted_font_cache: dict[tuple[int, str], ImageFont.FreeTypeFont] = {}
+
+    def _load_weighted_font(self, size: int, weight: str) -> ImageFont.FreeTypeFont:
+        """Load the font at a named variation weight (falls back to the plain face)."""
+        key = (size, weight)
+        if key not in self._weighted_font_cache:
+            try:
+                font = ImageFont.truetype(str(self.font_path), size=size)
+                try:
+                    font.set_variation_by_name(weight)
+                except (OSError, ValueError):
+                    pass  # static font: use as-is
+            except OSError:
+                font = self._load_font(size)
+            self._weighted_font_cache[key] = font
+        return self._weighted_font_cache[key]
+
+    @staticmethod
+    def _get_name_color(user_id: int) -> tuple[int, int, int]:
+        return TELEGRAM_NAME_COLORS[_PEER_COLOR_ORDER[user_id % 7]]
+
+    def _make_circle_avatar(
+        self, source: Image.Image | None, user_id: int, name: str, size: int
+    ) -> Image.Image:
+        """Build a circular avatar: profile photo, or a Telegram-style initials gradient."""
+        if source is None:
+            top = self._get_name_color(user_id)
+            bottom = tuple(int(c * 0.6) for c in top)
+            source = Image.new("RGB", (1, 2))
+            source.putpixel((0, 0), top)
+            source.putpixel((0, 1), bottom)  # type: ignore[arg-type]
+            source = source.resize((size, size), Image.Resampling.BILINEAR)
+
+            initials = "".join(word[0].upper() for word in name.split()[:2]) or "?"
+            font = self._load_weighted_font(int(size * 0.38), "Semibold")
+            ImageDraw.Draw(source).text(
+                (size / 2, size / 2), initials, font=font, fill="white", anchor="mm"
+            )
+        else:
+            source = self._crop_to_square(source).resize((size, size), Image.Resampling.LANCZOS)
+
+        # Antialiased circular mask drawn at 4x.
+        mask = Image.new("L", (size * 4, size * 4), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, size * 4, size * 4), fill=255)
+        mask = mask.resize((size, size), Image.Resampling.LANCZOS)
+
+        avatar = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        avatar.paste(source, (0, 0), mask)
+        return avatar
+
+    @staticmethod
+    def _tail_polygon(
+        x: float, bottom: float, width: float, height: float
+    ) -> list[tuple[float, float]]:
+        """Telegram-style bubble tail: curves from the left edge out to a point at the bottom."""
+
+        def quad(p0, p1, p2, steps=12):
+            return [
+                (
+                    (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t**2 * p2[0],
+                    (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t**2 * p2[1],
+                )
+                for t in (i / steps for i in range(steps + 1))
+            ]
+
+        tip = (x - width, bottom)
+        points = quad((x, bottom - height), (x - width * 0.1, bottom - height * 0.25), tip)
+        points += quad(tip, (x + width * 0.2, bottom), (x + width * 1.2, bottom - height * 0.15))
+        return points
+
+    def _draw_bubble_with_avatar(
+        self,
+        canvas: Image.Image,
+        avatar_source: Image.Image | None,
+        user_id: int,
+        author_name: str,
+        bx0: int,
+        by0: int,
+        bubble_w: int,
+        bubble_h: int,
+    ) -> None:
+        """Draw the bubble body, tail, outline and the bottom-aligned avatar."""
+        cfg = self.tg
+        s = cfg.supersample
+        draw = ImageDraw.Draw(canvas)
+        by1 = by0 + bubble_h
+        radius = cfg.bubble_radius * s
+        box = (bx0, by0, bx0 + bubble_w, by1)
+        # Square bottom-left corner: the tail takes its place.
+        corners = (True, True, True, False)
+        draw.rounded_rectangle(box, radius=radius, fill=cfg.bubble_color, corners=corners)
+        draw.polygon(
+            self._tail_polygon(bx0, by1, cfg.tail_width * s, cfg.tail_height * s),
+            fill=cfg.bubble_color,
+        )
+        draw.rounded_rectangle(
+            box, radius=radius, outline=cfg.bubble_outline, width=s, corners=corners
+        )
+
+        avatar_px = cfg.avatar_size * s
+        avatar = self._make_circle_avatar(avatar_source, user_id, author_name, avatar_px)
+        canvas.alpha_composite(avatar, (cfg.padding * s, by1 - avatar_px))
+
+    def _finalize(self, canvas: Image.Image) -> io.BytesIO:
+        """Fit the longest side to the sticker limit and encode as WebP."""
+        cfg = self.tg
+        scale = cfg.sticker_size / max(canvas.size)
+        final_size = (round(canvas.width * scale), round(canvas.height * scale))
+        canvas = canvas.resize(final_size, Image.Resampling.LANCZOS)
+
+        output = io.BytesIO()
+        canvas.save(output, format="WEBP", lossless=True)
+        output.seek(0)
+        return output
+
+    @staticmethod
+    def _round_corners(image: Image.Image, top_radius: int, bottom_radius: int) -> Image.Image:
+        """Clip an RGBA image to rounded corners (different radii for top and bottom)."""
+        w, h = image.size
+        top_mask = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(top_mask).rounded_rectangle((0, 0, w, h), radius=top_radius, fill=255)
+        mask = top_mask
+        if bottom_radius != top_radius:
+            bottom_mask = Image.new("L", (w, h), 0)
+            ImageDraw.Draw(bottom_mask).rounded_rectangle(
+                (0, 0, w, h), radius=bottom_radius, fill=255
+            )
+            mask = top_mask.copy()
+            mask.paste(bottom_mask.crop((0, h // 2, w, h)), (0, h // 2))
+
+        image = image.copy()
+        image.putalpha(ImageChops.multiply(image.getchannel("A"), mask))
+        return image
+
+    async def _download_image(self, file_id: str) -> Image.Image | None:
+        """Download a Telegram file as an RGBA image."""
+        try:
+            buffer = io.BytesIO()
+            await self.bot.download(file=file_id, destination=buffer)
+            buffer.seek(0)
+            return Image.open(buffer).convert("RGBA")
+        except Exception as e:
+            logger.exception("Error downloading media for quote: %s", e)
+            return None
+
+    def _render_sticker(
+        self,
+        avatar_source: Image.Image | None,
+        user_id: int,
+        author_name: str,
+        quote_text: str,
+    ) -> io.BytesIO:
+        """Compose the Telegram-style bubble and return it as a WebP sticker."""
+        cfg = self.tg
+        s = cfg.supersample
+
+        name_font = self._load_weighted_font(cfg.name_font_size * s, "Bold")
+        text_font = self._load_weighted_font(cfg.text_font_size * s, "Regular")
+
+        max_text_width = (
+            cfg.sticker_size
+            - 2 * cfg.padding
+            - cfg.avatar_size
+            - cfg.avatar_gap
+            - 2 * cfg.bubble_pad_x
+        ) * s
+
+        lines: list[str] = []
+        for paragraph in quote_text.split("\n"):
+            lines.extend(self._wrap_text(paragraph, text_font, max_text_width) or [""])
+        if len(lines) > cfg.max_lines:
+            lines = lines[: cfg.max_lines]
+            lines[-1] = lines[-1].rstrip() + "…"
+        body = "\n".join(lines)
+
+        measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        spacing = cfg.line_spacing * s
+        name_w = name_font.getlength(author_name)
+        name_ascent, name_descent = name_font.getmetrics()
+        name_h = name_ascent + name_descent
+        raw_bbox = measure.multiline_textbbox((0, 0), body, font=text_font, spacing=spacing)
+        body_bbox = tuple(int(v) for v in raw_bbox)
+        body_w, body_h = body_bbox[2] - body_bbox[0], body_bbox[3] - body_bbox[1]
+
+        bubble_w = int(max(name_w, body_w)) + 2 * cfg.bubble_pad_x * s
+        bubble_h = (
+            cfg.bubble_pad_top * s + name_h + cfg.name_gap * s + body_h + cfg.bubble_pad_bottom * s
+        )
+
+        avatar_px = cfg.avatar_size * s
+        pad = cfg.padding * s
+        bx0 = pad + avatar_px + cfg.avatar_gap * s
+        canvas_w = bx0 + bubble_w + pad
+        canvas_h = pad + max(bubble_h, avatar_px) + cfg.bottom_margin * s
+
+        canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        by0 = pad
+        self._draw_bubble_with_avatar(
+            canvas, avatar_source, user_id, author_name, bx0, by0, bubble_w, bubble_h
+        )
+
+        tx = bx0 + cfg.bubble_pad_x * s
+        ty = by0 + cfg.bubble_pad_top * s
+        name_color = self._get_name_color(user_id)
+        with Pilmoji(canvas, source=AppleEmojiSource) as pilmoji:
+            pilmoji.text((tx, ty), author_name, font=name_font, fill=name_color)
+            pilmoji.text(
+                (tx - body_bbox[0], ty + name_h + cfg.name_gap * s - body_bbox[1]),
+                body,
+                font=text_font,
+                fill=cfg.text_color,
+                spacing=spacing,
+            )
+
+        return self._finalize(canvas)
+
+    def _render_photo_quote(
+        self,
+        avatar_source: Image.Image | None,
+        user_id: int,
+        author_name: str,
+        photo: Image.Image,
+        caption: str | None,
+    ) -> io.BytesIO:
+        """Render a quoted photo as a bubble: author name on top, image below, optional caption."""
+        cfg = self.tg
+        s = cfg.supersample
+
+        name_font = self._load_weighted_font(cfg.name_font_size * s, "Bold")
+        text_font = self._load_weighted_font(cfg.text_font_size * s, "Regular")
+
+        name_w = name_font.getlength(author_name)
+        name_ascent, name_descent = name_font.getmetrics()
+        name_h = name_ascent + name_descent
+
+        # The photo spans the full bubble width; make it at least as wide as the name row.
+        max_media = cfg.media_max_size * s
+        media_w = min(max_media, int(max_media * photo.width / photo.height))
+        media_w = max(media_w, int(name_w) + 2 * cfg.bubble_pad_x * s)
+        media_h = round(media_w * photo.height / photo.width)
+        max_media_h = int(max_media * 1.3)
+        photo = photo.resize((media_w, media_h), Image.Resampling.LANCZOS)
+        if media_h > max_media_h:
+            top = (media_h - max_media_h) // 2  # center-crop overly tall images
+            photo = photo.crop((0, top, media_w, top + max_media_h))
+            media_h = max_media_h
+
+        caption_lines: list[str] = []
+        spacing = cfg.line_spacing * s
+        body = ""
+        body_bbox = (0, 0, 0, 0)
+        if caption:
+            max_text_width = media_w - 2 * cfg.bubble_pad_x * s
+            for paragraph in caption.split("\n"):
+                caption_lines.extend(self._wrap_text(paragraph, text_font, max_text_width) or [""])
+            if len(caption_lines) > cfg.max_caption_lines:
+                caption_lines = caption_lines[: cfg.max_caption_lines]
+                caption_lines[-1] = caption_lines[-1].rstrip() + "…"
+            body = "\n".join(caption_lines)
+            measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+            raw_bbox = measure.multiline_textbbox((0, 0), body, font=text_font, spacing=spacing)
+            body_bbox = tuple(int(v) for v in raw_bbox)
+
+        bubble_w = media_w
+        header_h = cfg.bubble_pad_top * s + name_h + cfg.name_gap * s
+        bubble_h = header_h + media_h
+        if caption:
+            bubble_h += (
+                cfg.caption_gap * s + (body_bbox[3] - body_bbox[1]) + cfg.bubble_pad_bottom * s
+            )
+
+        avatar_px = cfg.avatar_size * s
+        pad = cfg.padding * s
+        bx0 = pad + avatar_px + cfg.avatar_gap * s
+        canvas_w = bx0 + bubble_w + pad
+        canvas_h = pad + max(bubble_h, avatar_px) + cfg.bottom_margin * s
+
+        canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        by0 = pad
+        self._draw_bubble_with_avatar(
+            canvas, avatar_source, user_id, author_name, bx0, by0, bubble_w, bubble_h
+        )
+
+        # With no caption the photo sits flush with the bubble bottom, so its
+        # bottom corners follow the bubble radius.
+        media_radius = cfg.media_radius * s
+        bottom_radius = media_radius if caption else cfg.bubble_radius * s
+        photo = self._round_corners(photo, media_radius, bottom_radius)
+        canvas.alpha_composite(photo, (bx0, by0 + header_h))
+
+        tx = bx0 + cfg.bubble_pad_x * s
+        name_color = self._get_name_color(user_id)
+        with Pilmoji(canvas, source=AppleEmojiSource) as pilmoji:
+            pilmoji.text(
+                (tx, by0 + cfg.bubble_pad_top * s), author_name, font=name_font, fill=name_color
+            )
+            if caption:
+                pilmoji.text(
+                    (
+                        tx - body_bbox[0],
+                        by0 + header_h + media_h + cfg.caption_gap * s - body_bbox[1],
+                    ),
+                    body,
+                    font=text_font,
+                    fill=cfg.text_color,
+                    spacing=spacing,
+                )
+
+        return self._finalize(canvas)
+
+    def _render_sticker_quote(
+        self,
+        avatar_source: Image.Image | None,
+        user_id: int,
+        author_name: str,
+        sticker_image: Image.Image,
+    ) -> io.BytesIO:
+        """Render a quoted sticker: no bubble, just the sticker next to the avatar."""
+        cfg = self.tg
+        s = cfg.supersample
+
+        box = cfg.sticker_quote_size * s
+        factor = min(box / sticker_image.width, box / sticker_image.height)
+        media_w = round(sticker_image.width * factor)
+        media_h = round(sticker_image.height * factor)
+        sticker_image = sticker_image.resize((media_w, media_h), Image.Resampling.LANCZOS)
+        radius = cfg.media_radius * s
+        sticker_image = self._round_corners(sticker_image, radius, radius)
+
+        avatar_px = cfg.avatar_size * s
+        pad = cfg.padding * s
+        mx0 = pad + avatar_px + cfg.avatar_gap * s
+        canvas_w = mx0 + media_w + pad
+        canvas_h = pad + max(media_h, avatar_px) + cfg.bottom_margin * s
+
+        canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        media_y1 = pad + max(media_h, avatar_px)
+        canvas.alpha_composite(sticker_image, (mx0, media_y1 - media_h))
+
+        avatar = self._make_circle_avatar(avatar_source, user_id, author_name, avatar_px)
+        canvas.alpha_composite(avatar, (pad, media_y1 - avatar_px))
+
+        return self._finalize(canvas)
+
+    @staticmethod
+    def _shorten_multiline(text: str, width: int) -> str:
+        """Trim trailing whitespace and truncate, preserving line breaks."""
+        text = text.strip()
+        if len(text) <= width:
+            return text
+        return text[: max(0, width - 1)].rstrip() + "…"
+
+    async def create_quote(self, message: Message) -> io.BytesIO | None:
+        """Create a Telegram-UI style quote sticker from the replied (or selected) message."""
+        try:
+            reply_message = message.reply_to_message
+            if reply_message is None:
+                return None
+
+            from_user = reply_message.from_user
+            if from_user is None:
+                return None
+
+            author_name = self._shorten(
+                from_user.full_name or "Unknown User", self.tg.max_name_length
+            )
+            avatar_source = await self._get_profile_photo(from_user.id)
+
+            if reply_message.sticker:
+                sticker = reply_message.sticker
+                # Animated/video stickers can't be rendered; use their static thumbnail.
+                if sticker.is_animated or sticker.is_video:
+                    file_id = sticker.thumbnail.file_id if sticker.thumbnail else None
+                else:
+                    file_id = sticker.file_id
+                media = await self._download_image(file_id) if file_id else None
+                if media is None:
+                    return None
+                return self._render_sticker_quote(avatar_source, from_user.id, author_name, media)
+
+            if reply_message.photo:
+                media = await self._download_image(reply_message.photo[-1].file_id)
+                if media is None:
+                    return None
+                caption = self._extract_quote_text(message)
+                if caption and caption.strip():
+                    caption = self._shorten_multiline(caption, self.tg.max_quote_length)
+                else:
+                    caption = None
+                return self._render_photo_quote(
+                    avatar_source, from_user.id, author_name, media, caption
+                )
+
+            quote_text = self._extract_quote_text(message)
+            if not quote_text or not quote_text.strip():
+                return None
+
+            quote_text = self._shorten_multiline(quote_text, self.tg.max_quote_length)
+            return self._render_sticker(avatar_source, from_user.id, author_name, quote_text)
+        except Exception as e:
+            logger.exception("Error creating telegram-style quote: %s", e)
+            return None
+
+    async def send_quote(self, message: Message):
+        """Create and send the quote sticker, or report failure to the user."""
+        quote_buffer = await self.create_quote(message)
+        if quote_buffer is None:
+            await message.answer(
+                "❌ Failed to create quote."
+            )
+            return
+
+        sticker = BufferedInputFile(quote_buffer.read(), filename="quote.webp")
+        await message.reply_sticker(sticker=sticker)

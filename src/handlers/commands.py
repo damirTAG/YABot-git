@@ -19,7 +19,7 @@ from config.constants import (
 )
 from database.cache import cache
 from database.repo import DB_actions
-from services.makequote import QuoteMaker
+from services.makequote import QuoteMaker, TelegramQuoteMaker
 from services.openai import generate_response
 from utils import RegexFilter, Tools
 from utils.decorators import log
@@ -309,6 +309,20 @@ async def makequote_handler(message: types.Message, bot: Bot):
     await quotemaker.send_quote(message)
 
 
+# telegram-ui style quote sticker handler
+quote_tg_pattern = r"^[/\.](qq|йй)$"
+
+
+@router.message(RegexFilter(quote_tg_pattern))
+@log("QUOTE_MAKER_TG")
+async def makequote_tg_handler(message: types.Message, bot: Bot):
+    if db.get_setting(message.chat.id, "quote_disabled"):
+        return
+
+    quotemaker = TelegramQuoteMaker(bot)
+    await quotemaker.send_quote(message)
+
+
 # settings handler
 SETTINGS_EMOJI = {
     "voice_disabled": "🎤",
@@ -324,7 +338,7 @@ SETTINGS_NAMES = {
     "voice_disabled": "Voice Messages",
     "tiktok_send_sound_videos_disabled": "TikTok video with Sound",
     "coins_converter_disabled": "Currency Converter",
-    "quote_disabled": "Quote Maker (/q)",
+    "quote_disabled": "Quote Maker (/q, /qq)",
     "roll_disabled": "Roll Number (/roll)",
     "gpt_disabled": "AI Responses (/ask)",
     "joke_disabled": "Joke Ratings (/joke)",
