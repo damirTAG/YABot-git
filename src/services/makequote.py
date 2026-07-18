@@ -312,7 +312,9 @@ class QuoteMaker:
         """Create and send the quote image, or report failure to the user."""
         quote_buffer = await self.create_quote(message)
         if quote_buffer is None:
-            await message.answer("❌ Failed to create quote. Use /qq to create quote with image or sticker.")
+            await message.answer(
+                "❌ Failed to create quote. Use /qq to create quote with image or sticker."
+            )
             return
 
         photo = BufferedInputFile(quote_buffer.read(), filename="quote.png")
@@ -776,9 +778,7 @@ class TelegramQuoteMaker(QuoteMaker):
         """Create and send the quote sticker, or report failure to the user."""
         quote_buffer = await self.create_quote(message)
         if quote_buffer is None:
-            await message.answer(
-                "❌ Failed to create quote."
-            )
+            await message.answer("❌ Failed to create quote.")
             return
 
         sticker = BufferedInputFile(quote_buffer.read(), filename="quote.webp")

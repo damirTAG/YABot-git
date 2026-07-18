@@ -391,17 +391,20 @@ async def cmd_settings(message: types.Message):
 
 # Weather command handler
 
-WEATHER_PATTERN = re.compile(r'^(?:/w|\.ц)\s+([\w\s,]+)$', re.IGNORECASE)
+WEATHER_PATTERN = re.compile(r"^(?:/w|\.ц)\s+([\w\s,]+)$", re.IGNORECASE)
 telegraph_client = TelegraphClient(access_token=TELEGRAPH_ACCESS_TOKEN)
+
 
 @router.message(RegexFilter(WEATHER_PATTERN))
 async def cmd_weather(message: types.Message):
-    city_name = WEATHER_PATTERN.match(message.text).group(1) # type: ignore
-    city_name = CITY_ALIASES.get(city_name.lower(), city_name)  # Normalize city name if alias exists
+    city_name = WEATHER_PATTERN.match(message.text).group(1)  # type: ignore
+    city_name = CITY_ALIASES.get(
+        city_name.lower(), city_name
+    )  # Normalize city name if alias exists
     try:
-        weather_data, forecast_data = await fetch_weather_data(city_name) # type: ignore
+        weather_data, forecast_data = await fetch_weather_data(city_name)  # type: ignore
         weather = Weather(weather_data, forecast_data)
-        
+
         output = weather.generate_output()
         telegraph_url = await _create_telegraph_page(weather)
         if telegraph_url:
@@ -410,7 +413,8 @@ async def cmd_weather(message: types.Message):
         await message.reply(output, parse_mode="HTML", disable_web_page_preview=True)
     except (WeatherAPIError, CityNotFoundError) as e:
         await message.reply(f"❌ Error: {e}")
-    
+
+
 async def _create_telegraph_page(weather: Weather) -> str | None:
     try:
         content = weather.generate_telegraph_content()
@@ -418,7 +422,7 @@ async def _create_telegraph_page(weather: Weather) -> str | None:
             author_name="Yerzhan",
             author_url="https://t.me/yerzhanakh_bot",
             title=f"Weather Forecast for {weather.city_name}",
-            content=content
+            content=content,
         )
         return f"https://telegra.ph/{result['path']}"
     except Exception as e:

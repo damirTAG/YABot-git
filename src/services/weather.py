@@ -21,19 +21,19 @@ CITY_OVERRIDES: dict[int, tuple[str, str | None]] = {
 }
 OWM_BASE = "https://api.openweathermap.org/data/2.5"
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=10)
- 
+
 WEATHER_BLOCKED_CHAT_IDS = {1825727646}
- 
+
 CITY_ALIASES = {
     "аксай": "аксай, kz",
     "4 энергоблок": "аксай, kz",
 }
- 
- 
+
+
 class WeatherAPIError(Exception):
     pass
- 
- 
+
+
 class CityNotFoundError(WeatherAPIError):
     pass
 
@@ -63,9 +63,7 @@ class Weather:
         self.city_id: int = weather_data["id"]
         self.country_code: str | None = sys_info.get("country")
 
-        self.timezone = datetime.timezone(
-            datetime.timedelta(seconds=weather_data["timezone"])
-        )
+        self.timezone = datetime.timezone(datetime.timedelta(seconds=weather_data["timezone"]))
 
         self.weather_description: str = weather_data["weather"][0]["description"].capitalize()
         self.temperature: float = round(main_info["temp"], 1)
@@ -127,45 +125,29 @@ class Weather:
     def generate_telegraph_content(self) -> list[Node]:
         content: list[Node] = []
 
-        content.append({
-            "tag": "p",
-            "children": [
-                f"📅 Forecast ({self._utc_offset_str()})"
-            ]
-        })
+        content.append({"tag": "p", "children": [f"📅 Forecast ({self._utc_offset_str()})"]})
 
         for day, items in groupby(self.forecasts, key=lambda f: f.day):
+            content.append({"tag": "h4", "children": [day]})
 
-            content.append({
-                "tag": "h4",
-                "children": [day]
-            })
-
-            ul = {
-                "tag": "ul",
-                "children": []
-            }
+            ul = {"tag": "ul", "children": []}
 
             for f in items:
-                ul["children"].append({
-                    "tag": "li",
-                    "children": [
-                        f"🕒 {f.time} | {f.temp}°C | {f.description}"
-                    ]
-                })
+                ul["children"].append(
+                    {"tag": "li", "children": [f"🕒 {f.time} | {f.temp}°C | {f.description}"]}
+                )
 
             content.append(ul)
 
         return content
-    
 
 
 def get_flag_emoji(country_code: str | None) -> str:
     if not country_code or len(country_code) != 2:
         return ""
     return "".join(chr(127397 + ord(c)) for c in country_code.upper())
- 
- 
+
+
 async def _fetch_owm(session: aiohttp.ClientSession, endpoint: str, city: str) -> dict:
     params = {"q": city, "appid": OWM_API_KEY, "units": "metric", "lang": "en"}
     async with session.get(f"{OWM_BASE}/{endpoint}", params=params) as resp:
@@ -175,8 +157,8 @@ async def _fetch_owm(session: aiohttp.ClientSession, endpoint: str, city: str) -
         if resp.status != 200:
             raise WeatherAPIError(f"{endpoint}: {resp.status} {data.get('message')}")
         return data
- 
- 
+
+
 async def fetch_weather_data(city: str) -> tuple[dict, dict]:
     async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
         return await asyncio.gather(
