@@ -342,6 +342,7 @@ SETTINGS_EMOJI = {
     "roll_disabled": "🎲",
     "gpt_disabled": "🤖",
     "joke_disabled": "🃏",
+    "weather_disabled": "🌤",
 }
 
 SETTINGS_NAMES = {
@@ -352,6 +353,7 @@ SETTINGS_NAMES = {
     "roll_disabled": "Roll Number (/roll)",
     "gpt_disabled": "AI Responses (/ask)",
     "joke_disabled": "Joke Ratings (/joke)",
+    "weather_disabled": "Weather Forecast (/w)",
 }
 
 
@@ -397,6 +399,9 @@ telegraph_client = TelegraphClient(access_token=TELEGRAPH_ACCESS_TOKEN)
 
 @router.message(RegexFilter(WEATHER_PATTERN))
 async def cmd_weather(message: types.Message):
+    if db.get_setting(message.chat.id, "weather_disabled"):
+        return
+
     city_name = WEATHER_PATTERN.match(message.text).group(1)  # type: ignore
     city_name = CITY_ALIASES.get(
         city_name.lower(), city_name

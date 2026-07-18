@@ -86,7 +86,8 @@ class DB_actions:
                         coins_converter_disabled BOOLEAN NOT NULL DEFAULT FALSE,
                         roll_disabled BOOLEAN NOT NULL DEFAULT FALSE,
                         gpt_disabled BOOLEAN NOT NULL DEFAULT FALSE,
-                        joke_disabled BOOLEAN NOT NULL DEFAULT FALSE
+                        joke_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+                        weather_disabled BOOLEAN NOT NULL DEFAULT FALSE
                     )
                 """)
 
@@ -94,6 +95,10 @@ class DB_actions:
                 cursor.execute("""
                     ALTER TABLE bot_settings
                     ADD COLUMN IF NOT EXISTS joke_disabled BOOLEAN NOT NULL DEFAULT FALSE
+                """)
+                cursor.execute("""
+                    ALTER TABLE bot_settings
+                    ADD COLUMN IF NOT EXISTS weather_disabled BOOLEAN NOT NULL DEFAULT FALSE
                 """)
 
                 # Jokes (one per /joke poll) and their 0-10 votes.
