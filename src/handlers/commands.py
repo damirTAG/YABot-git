@@ -417,7 +417,7 @@ async def cmd_weather(message: types.Message):
 
         await message.reply(output, parse_mode="HTML", disable_web_page_preview=True)
     except (WeatherAPIError, CityNotFoundError) as e:
-        await message.reply(f"❌ Error: {e}")
+        logger.error(f"weather error: {e}")
 
 
 async def _create_telegraph_page(weather: Weather) -> str | None:
