@@ -31,6 +31,8 @@ OPEN_AI_TOKEN = get_env("OPEN_AI_TOKEN")
 GEMINI_TOKEN = get_env("GEMINI_TOKEN")
 AUDIO_MODEL_KEY = get_env("AUDIO_MODEL_KEY")
 YANDEX_MUSIC_TOKEN = get_env("YANDEX_MUSIC_TOKEN")
+OWM_API_KEY = get_env("OWM_API_KEY")  # OpenWeatherMap API key for weather data
+TELEGRAPH_ACCESS_TOKEN = get_env("TELEGRAPH_ACCESS_TOKEN")  # Telegraph API access token
 
 # Instagram credentials
 INST_USERNAME = get_env("INST_USERNAME")

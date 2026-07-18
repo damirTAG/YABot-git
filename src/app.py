@@ -9,6 +9,7 @@ from database.repo import DB_actions
 from handlers import setup_routers
 from services.coins import init_coins_apis
 from services.jokes import weekly_joke_scheduler
+from services.telegraph import telegraph
 
 
 async def main():
@@ -28,14 +29,22 @@ async def main():
     logger.info("Initializing coins data...")
     await init_coins_apis()
 
+    await telegraph.ensure_session()  # Ensure the session is created
+
     # Background task: weekly joke leaderboard (Sunday 23:40 Asia/Almaty)
     asyncio.create_task(weekly_joke_scheduler(bot))
 
     # Log bot startup
     logger.info("Starting bot...")
 
-    # Start polling
-    await dp.start_polling(bot)
+    try:
+        # Start polling
+        await dp.start_polling(bot)
+    finally:
+        # Close the bot session and telegraph session on shutdown
+        await bot.session.close()
+        await telegraph.close()
+        logger.info("Bot stopped")
 
 
 if __name__ == "__main__":

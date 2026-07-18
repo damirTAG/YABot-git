@@ -1,3 +1,4 @@
+import re
 import time
 from random import randrange
 
@@ -17,10 +18,19 @@ from config.constants import (
     MAX_GPT_QUERY_LENGTH,
     PM_BUTTON,
 )
+from config.settings import TELEGRAPH_ACCESS_TOKEN
 from database.cache import cache
 from database.repo import DB_actions
 from services.makequote import QuoteMaker, TelegramQuoteMaker
 from services.openai import generate_response
+from services.telegraph import TelegraphClient
+from services.weather import (
+    CITY_ALIASES,
+    CityNotFoundError,
+    Weather,
+    WeatherAPIError,
+    fetch_weather_data,
+)
 from utils import RegexFilter, Tools
 from utils.decorators import log
 from utils.helpers import build_saved_files_keyboard
@@ -377,3 +387,40 @@ async def cmd_settings(message: types.Message):
 
     keyboard = get_settings_keyboard(db, chat_id)
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+# Weather command handler
+
+WEATHER_PATTERN = re.compile(r'^(?:/w|\.ц)\s+([\w\s,]+)$', re.IGNORECASE)
+telegraph_client = TelegraphClient(access_token=TELEGRAPH_ACCESS_TOKEN)
+
+@router.message(RegexFilter(WEATHER_PATTERN))
+async def cmd_weather(message: types.Message):
+    city_name = WEATHER_PATTERN.match(message.text).group(1) # type: ignore
+    city_name = CITY_ALIASES.get(city_name.lower(), city_name)  # Normalize city name if alias exists
+    try:
+        weather_data, forecast_data = await fetch_weather_data(city_name) # type: ignore
+        weather = Weather(weather_data, forecast_data)
+        
+        output = weather.generate_output()
+        telegraph_url = await _create_telegraph_page(weather)
+        if telegraph_url:
+            output += f"<a href='{telegraph_url}'>Forecast for 5 days</a>"
+
+        await message.reply(output, parse_mode="HTML", disable_web_page_preview=True)
+    except (WeatherAPIError, CityNotFoundError) as e:
+        await message.reply(f"❌ Error: {e}")
+    
+async def _create_telegraph_page(weather: Weather) -> str | None:
+    try:
+        content = weather.generate_telegraph_content()
+        result = await telegraph_client.create_page(
+            author_name="Yerzhan",
+            author_url="https://t.me/yerzhanakh_bot",
+            title=f"Weather Forecast for {weather.city_name}",
+            content=content
+        )
+        return f"https://telegra.ph/{result['path']}"
+    except Exception as e:
+        logger.error(f"Failed to create Telegraph page: {e}")
+        return None
