@@ -3,9 +3,11 @@ import os
 from dataclasses import dataclass
 
 import aiohttp
+import requests
 import yt_dlp
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
+from mutagen.id3 import ID3, APIC
 
 PATTERN = r"(https://soundcloud\.com/[^/]+)"
 
@@ -19,6 +21,7 @@ class Track:
     caption: str = None
     link: str = None
     download_link: str = None
+    cover: str = None 
 
 
 class SoundCloudTool:
@@ -184,17 +187,47 @@ class SoundCloudTool:
                 else:
                     raise Exception(f"Download failed with status {response.status}")
 
-        self._insert_metadata(output_file, track.title, track.artists)
+        self._insert_metadata(
+            output_file, track.title, track.artists, track.cover
+        )
         return output_file
 
     @staticmethod
-    def _insert_metadata(file_path: str, title: str, artist: str):
-        """Insert ID3 metadata into MP3 file."""
+    def _insert_metadata(
+        file_path: str,
+        title: str,
+        artist: str,
+        cover: str | None = None
+    ):
         try:
             audio = MP3(file_path, ID3=EasyID3)
+
             audio["title"] = title
             audio["artist"] = artist
             audio.save()
+
+            if cover:
+                response = requests.get(cover, timeout=10)
+                response.raise_for_status()
+
+                tags = ID3(file_path)
+                tags.delall("APIC")
+
+                tags.add(
+                    APIC(
+                        encoding=3,
+                        mime=response.headers.get(
+                            "Content-Type",
+                            "image/jpeg"
+                        ),
+                        type=3,
+                        desc="Cover",
+                        data=response.content,
+                    )
+                )
+
+                tags.save()
+
         except Exception as e:
             print(f"Warning: Could not insert metadata: {e}")
 
@@ -241,6 +274,7 @@ class SoundCloudTool:
             ),
             link=webpage_url,
             download_link=self._get_download_link(data),  # type: ignore
+            cover=data.get("thumbnail", None) # type: ignore
         )
 
 

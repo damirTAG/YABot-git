@@ -13,9 +13,14 @@ import asyncio
 import logging
 import os
 import re
+import requests
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
+import mutagen.id3
+from mutagen.easyid3 import EasyID3
+from mutagen.mp3 import MP3
+from mutagen.id3 import APIC, ID3, ID3NoHeaderError
 
 import aiofiles
 from aiohttp import ClientSession
@@ -216,29 +221,45 @@ class YandexMusicSDK:
         """
         filename = self._prepare_filename(metadata.id)
         if filename and os.path.exists(filename):
-            import mutagen.id3
-            from mutagen.easyid3 import EasyID3
-            from mutagen.mp3 import MP3
-
             try:
                 self.logger.info(f"Starting metadata inserting: {metadata.title}")
                 try:
                     audio = EasyID3(filename)
-                except mutagen.id3.ID3NoHeaderError:
+                except ID3NoHeaderError:
                     audio = MP3(filename)
                     audio.add_tags()
-                    audio.tags.save(filename)
+                    audio.save()
                     audio = EasyID3(filename)
-                if metadata.album_title:
-                    audio["album"] = metadata.album_title
-                    if metadata.year:
-                        audio["date"] = str(metadata.year)
-                    if metadata.genre:
-                        audio["genre"] = metadata.genre
                 audio["title"] = metadata.title
                 audio["artist"] = metadata.artists
 
+                if metadata.album_title:
+                    audio["album"] = metadata.album_title
+
+                if metadata.year:
+                    audio["date"] = str(metadata.year)
+
+                if metadata.genre:
+                    audio["genre"] = metadata.genre
+
                 audio.save()
+
+                if metadata.cover:
+                    response = requests.get(metadata.cover, timeout=10)
+                    response.raise_for_status()
+
+                    tags = ID3(filename)
+                    tags.delall("APIC")  # rm existing cover art if any
+                    tags.add(
+                        APIC(
+                            encoding=3,
+                            mime=response.headers.get("Content-Type", "image/jpeg"),
+                            type=3,
+                            desc="Cover",
+                            data=response.content,
+                        )
+                    )
+                    tags.save()
                 self.logger.info(f"Updated metadata for: {metadata.title}")
             except Exception as e:
                 self.logger.error(f"Error updating metadata: {str(e)}")

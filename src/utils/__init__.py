@@ -81,10 +81,9 @@ class Tools:
 
         return None
 
-    def check_query(self, query, max_words=7):
+    def check_query(self, query, max_words=20):
         words = query.split()
-        if len(words) > max_words:
-            return False
+        return len(words) <= max_words
 
     def parse_platforms(self, video_links):
         try:
